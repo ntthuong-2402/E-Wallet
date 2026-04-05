@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\Friday.BuildingBlocks.Application\Friday.BuildingBlocks.Application.csproj" />
+    <ProjectReference Include="..\Friday.Modules.Sample.Domain\Friday.Modules.Sample.Domain.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="LinKit.Core" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+  </ItemGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+</Project>

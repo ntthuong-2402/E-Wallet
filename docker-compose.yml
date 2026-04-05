@@ -1,0 +1,63 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: friday
+      POSTGRES_PASSWORD: friday
+      POSTGRES_DB: friday
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U friday -d friday"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.76.0
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+
+  friday-api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Docker
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__FridayDb: "Host=postgres;Port=5432;Database=friday;Username=friday;Password=friday"
+      ConnectionStrings__AdminDatabase: "Host=postgres;Port=5432;Database=friday;Username=friday;Password=friday"
+      ConnectionStrings__Redis: "redis:6379"
+      Database__Provider: PostgreSql
+      Database__ApplyMigrationsOnStartup: "true"
+      Cache__UseRedis: "true"
+      Cache__RedisConnectionString: "redis:6379"
+      Authentication__Jwt__Secret: "FridayDockerJwtSecret_ChangeMe_Min32Chars!!!!"
+      OpenTelemetry__OtlpEndpoint: "http://jaeger:4317"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      jaeger:
+        condition: service_started
+
+volumes:
+  postgres_data:
+  redis_data:

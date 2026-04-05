@@ -1,0 +1,25 @@
+<Solution>
+  <Folder Name="/src/">
+    <File Path="src/Directory.Build.props" />
+    <File Path="src/Directory.Packages.props" />
+  </Folder>
+  <Folder Name="/src/API/">
+    <Project Path="src/API/Friday.API/Friday.API.csproj" />
+  </Folder>
+  <Folder Name="/src/BuildingBlocks/">
+    <Project Path="src/BuildingBlocks/Friday.BuildingBlocks.Application/Friday.BuildingBlocks.Application.csproj" />
+    <Project Path="src/BuildingBlocks/Friday.BuildingBlocks.Domain/Friday.BuildingBlocks.Domain.csproj" />
+    <Project Path="src/BuildingBlocks/Friday.BuildingBlocks.Infrastructure/Friday.BuildingBlocks.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/" />
+  <Folder Name="/src/Modules/Admin/">
+    <Project Path="src/Modules/Admin/Friday.Modules.Admin.Application/Friday.Modules.Admin.Application.csproj" />
+    <Project Path="src/Modules/Admin/Friday.Modules.Admin.Domain/Friday.Modules.Admin.Domain.csproj" />
+    <Project Path="src/Modules/Admin/Friday.Modules.Admin.Infrastructure/Friday.Modules.Admin.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Sample/">
+    <Project Path="src/Modules/Sample/Friday.Modules.Sample.Application/Friday.Modules.Sample.Application.csproj" />
+    <Project Path="src/Modules/Sample/Friday.Modules.Sample.Domain/Friday.Modules.Sample.Domain.csproj" />
+    <Project Path="src/Modules/Sample/Friday.Modules.Sample.Infrastructure/Friday.Modules.Sample.Infrastructure.csproj" />
+  </Folder>
+</Solution>
