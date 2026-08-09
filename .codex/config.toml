@@ -1,0 +1,33 @@
+# Project-scoped Codex configuration.
+# Project config is applied only when the repository is trusted by Codex.
+
+# Keep instruction loading bounded. Prefer nested AGENTS.md rather than raising this aggressively.
+project_doc_max_bytes = 32768
+
+# Let the selected model choose its token threshold; count the full active context if auto-compaction triggers.
+model_auto_compact_token_limit_scope = "total"
+
+[features]
+# Codex Memories is off by default in current Codex; enable it explicitly for cross-session context.
+memories = true
+# Multi-agent collaboration is useful for bounded exploration/review/testing.
+multi_agent = true
+
+[memories]
+# Save eligible threads as memory inputs and allow memories to be injected into later sessions.
+generate_memories = true
+use_memories = true
+
+# Conservative banking-oriented default: do not generate memories from threads that used external web/MCP/tool-search context.
+# Repository checkpoint files remain the deterministic fallback for those sessions.
+disable_on_external_context = true
+
+# Keep project memory recent and bounded.
+max_rollout_age_days = 30
+max_unused_days = 30
+min_rollout_idle_hours = 6
+max_rollouts_per_startup = 16
+
+[agents]
+# Enough parallelism for implementation + focused reviewers without flooding the main session with results.
+max_concurrent_threads_per_session = 4

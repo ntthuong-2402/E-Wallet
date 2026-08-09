@@ -1,0 +1,5 @@
+Codex banking context-safe bundle verification
+Root: /mnt/data/banking-payment-gateway-codex-context-safe
+Errors: 0
+Warnings: 0
+RESULT: PASS

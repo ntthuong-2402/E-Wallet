@@ -1,0 +1,6 @@
+# Local/ephemeral agent working state
+CURRENT_TASK.md
+VERIFICATION.md
+logs/
+history/
+*.tmp
