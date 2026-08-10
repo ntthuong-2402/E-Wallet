@@ -1,6 +1,8 @@
 using Friday.BuildingBlocks.Application.Errors;
 using Friday.BuildingBlocks.Application.Exceptions;
 using Friday.Modules.Admin.Application.Models;
+using Friday.Modules.Admin.Application.Security;
+using Friday.Modules.Admin.Application.Auditing;
 using Friday.Modules.Admin.Domain.Repositories;
 using Friday.Modules.Admin.Domain.Security;
 using LinKit.Core.Cqrs;
@@ -15,7 +17,10 @@ public sealed record ResetUserPasswordCommand(int UserId, string NewPassword) : 
 
 public sealed class ResetUserPasswordHandler(
     IUserRepository users,
-    IPasswordHasher<CredentialUser> passwordHasher
+    IUserSessionRepository sessions,
+    IPasswordHasher<CredentialUser> passwordHasher,
+    IPasswordPolicy passwordPolicy,
+    ISecurityAuditWriter audit
 ) : ICommandHandler<ResetUserPasswordCommand, UserDto>
 {
     private static readonly CredentialUser CredentialMarker = new();
@@ -25,10 +30,7 @@ public sealed class ResetUserPasswordHandler(
         CancellationToken cancellationToken
     )
     {
-        if (string.IsNullOrWhiteSpace(request.NewPassword))
-        {
-            throw new FridayException(ErrorCodes.Admin.PasswordRequired, "Password is required.");
-        }
+        passwordPolicy.Validate(request.NewPassword);
 
         Domain.Aggregates.UserAggregate.User? user = await users.GetByIdWithPasswordAsync(
             request.UserId,
@@ -45,6 +47,9 @@ public sealed class ResetUserPasswordHandler(
 
         string hash = passwordHasher.HashPassword(CredentialMarker, request.NewPassword);
         user.SetOrUpdatePasswordHash(hash);
+        user.RequirePasswordChange();
+        await sessions.RevokeAllForUserAsync(user.Id, cancellationToken);
+        await audit.WriteAsync(new("PASSWORD_RESET", "SUCCESS", TargetType: "USER", TargetId: user.Id.ToString()), cancellationToken);
 
         return UserDto.FromUser(user);
     }

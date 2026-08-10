@@ -111,6 +111,22 @@ public sealed class AuthenticatedUserValidationMiddleware(RequestDelegate next)
             return;
         }
 
+        if (
+            user.MustChangePassword
+            && !context.Request.Path.StartsWithSegments("/api/auth/change-password")
+            && !context.Request.Path.StartsWithSegments("/api/auth/logout")
+        )
+        {
+            await WriteJsonAsync(
+                context,
+                StatusCodes.Status403Forbidden,
+                ErrorCodes.Admin.PasswordChangeRequired,
+                "Password must be changed before accessing this resource.",
+                localizer
+            );
+            return;
+        }
+
         await next(context);
     }
 

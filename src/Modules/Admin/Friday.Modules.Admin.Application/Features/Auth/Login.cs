@@ -1,6 +1,8 @@
 using Friday.BuildingBlocks.Application.Errors;
 using Friday.BuildingBlocks.Application.Exceptions;
 using Friday.Modules.Admin.Application.Configuration;
+using Friday.Modules.Admin.Application.Auditing;
+using Friday.BuildingBlocks.Application.Abstractions;
 using Friday.Modules.Admin.Application.Models;
 using Friday.Modules.Admin.Application.Security;
 using Friday.Modules.Admin.Domain.Aggregates.UserAggregate;
@@ -22,7 +24,10 @@ public sealed class LoginCommandHandler(
     IPasswordHasher<CredentialUser> passwordHasher,
     IJwtTokenIssuer jwt,
     IOptions<JwtSettings> jwtSettings,
-    IHttpContextAccessor httpContextAccessor
+    IOptions<LoginSecurityOptions> loginSecurity,
+    IHttpContextAccessor httpContextAccessor,
+    ISecurityAuditWriter audit,
+    IUnitOfWork unitOfWork
 ) : ICommandHandler<LoginCommand, LoginResponseDto>
 {
     private static readonly CredentialUser CredentialMarker = new();
@@ -36,10 +41,24 @@ public sealed class LoginCommandHandler(
 
         if (user?.PasswordCredential is null)
         {
+            await audit.WriteAsync(new("LOGIN_FAILED", "FAILURE", ReasonCode: ErrorCodes.Admin.InvalidCredentials), cancellationToken);
+            await unitOfWork.CommitAsync(cancellationToken);
             throw new FridayException(
                 ErrorCodes.Admin.InvalidCredentials,
                 "Invalid login or password.",
                 StatusCodes.Status401Unauthorized
+            );
+        }
+
+        DateTime utcNow = DateTime.UtcNow;
+        if (user.IsTemporarilyLocked(utcNow))
+        {
+            await audit.WriteAsync(new("LOGIN_LOCKED_OUT", "FAILURE", ActorUserId: user.Id, TargetType: "USER", TargetId: user.Id.ToString(), ReasonCode: ErrorCodes.Admin.AccountTemporarilyLocked), cancellationToken);
+            await unitOfWork.CommitAsync(cancellationToken);
+            throw new FridayException(
+                ErrorCodes.Admin.AccountTemporarilyLocked,
+                "User account is temporarily locked.",
+                StatusCodes.Status429TooManyRequests
             );
         }
 
@@ -51,12 +70,22 @@ public sealed class LoginCommandHandler(
 
         if (verification == PasswordVerificationResult.Failed)
         {
+            LoginSecurityOptions security = loginSecurity.Value;
+            user.RecordLoginFailure(
+                utcNow,
+                Math.Max(1, security.MaximumFailedAttempts),
+                TimeSpan.FromMinutes(Math.Max(1, security.LockoutMinutes))
+            );
+            await audit.WriteAsync(new("LOGIN_FAILED", "FAILURE", ActorUserId: user.Id, TargetType: "USER", TargetId: user.Id.ToString(), ReasonCode: ErrorCodes.Admin.InvalidCredentials), cancellationToken);
+            await unitOfWork.CommitAsync(cancellationToken);
             throw new FridayException(
                 ErrorCodes.Admin.InvalidCredentials,
                 "Invalid login or password.",
                 StatusCodes.Status401Unauthorized
             );
         }
+
+        user.RecordLoginSuccess();
 
         if (!user.IsActive)
         {
@@ -103,6 +132,7 @@ public sealed class LoginCommandHandler(
         );
 
         await sessions.AddAsync(session, cancellationToken);
+        await audit.WriteAsync(new("LOGIN_SUCCEEDED", "SUCCESS", ActorUserId: user.Id, TargetType: "USER", TargetId: user.Id.ToString()), cancellationToken);
 
         JwtAccessTokenResult access = jwt.CreateAccessToken(user.Id, session.Id, roleCodes);
 

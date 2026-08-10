@@ -23,7 +23,7 @@ public static class AuthEndpoints
                 LoginResponseDto response = await mediator.SendAsync(command, cancellationToken);
                 return ApiResults.Ok(context, response);
             }
-        );
+        ).RequireRateLimiting("auth-strict");
 
         group.MapPost(
             "/login",
@@ -37,7 +37,7 @@ public static class AuthEndpoints
                 LoginResponseDto response = await mediator.SendAsync(command, cancellationToken);
                 return ApiResults.Ok(context, response);
             }
-        );
+        ).RequireRateLimiting("auth-strict");
 
         group.MapPost(
             "/refresh",
@@ -54,7 +54,7 @@ public static class AuthEndpoints
                 );
                 return ApiResults.Ok(context, response);
             }
-        );
+        ).RequireRateLimiting("auth-strict");
 
         group.MapPost(
             "/logout",
@@ -69,6 +69,20 @@ public static class AuthEndpoints
                 return ApiResults.Ok(context, ok);
             }
         );
+
+        group.MapPost(
+            "/change-password",
+            async (
+                HttpContext context,
+                ChangePasswordCommand command,
+                IMediator mediator,
+                CancellationToken cancellationToken
+            ) =>
+            {
+                bool ok = await mediator.SendAsync(command, cancellationToken);
+                return ApiResults.Ok(context, ok);
+            }
+        ).RequireAuthorization().RequireRateLimiting("auth-strict");
 
         return endpoints;
     }

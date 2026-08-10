@@ -3,6 +3,8 @@ using Friday.BuildingBlocks.Application.Errors;
 using Friday.BuildingBlocks.Application.Exceptions;
 using Friday.Modules.Admin.Application.Configuration;
 using Friday.Modules.Admin.Application.Models;
+using Friday.Modules.Admin.Application.Security;
+using Friday.Modules.Admin.Application.Auditing;
 using Friday.Modules.Admin.Domain.Aggregates.UserAggregate;
 using Friday.Modules.Admin.Domain.Repositories;
 using Friday.Modules.Admin.Domain.Security;
@@ -26,7 +28,9 @@ public sealed class RegisterCommandHandler(
     IPasswordHasher<CredentialUser> passwordHasher,
     IMediator mediator,
     IUnitOfWork unitOfWork,
-    IOptionsMonitor<RegistrationOptions> registrationOptions
+    IOptionsMonitor<RegistrationOptions> registrationOptions,
+    IPasswordPolicy passwordPolicy,
+    ISecurityAuditWriter audit
 ) : ICommandHandler<RegisterCommand, LoginResponseDto>
 {
     private static readonly CredentialUser CredentialMarker = new();
@@ -45,10 +49,7 @@ public sealed class RegisterCommandHandler(
             );
         }
 
-        if (string.IsNullOrWhiteSpace(request.Password))
-        {
-            throw new FridayException(ErrorCodes.Admin.PasswordRequired, "Password is required.");
-        }
+        passwordPolicy.Validate(request.Password);
 
         if (await users.ExistsByUsernameAsync(request.Username, cancellationToken))
         {
@@ -81,6 +82,8 @@ public sealed class RegisterCommandHandler(
         user.SetPasswordCredential(UserPassword.Create(user, hash));
 
         await users.AddAsync(user, cancellationToken);
+        user.MarkPasswordChanged();
+        await audit.WriteAsync(new("USER_REGISTERED", "SUCCESS", TargetType: "USER", TargetId: user.UserCode), cancellationToken);
         await unitOfWork.CommitAsync(cancellationToken);
 
         return await mediator.SendAsync(

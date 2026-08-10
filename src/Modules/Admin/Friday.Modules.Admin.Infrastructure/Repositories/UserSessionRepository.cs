@@ -56,4 +56,32 @@ public sealed class UserSessionRepository(FridayDbContext dbContext) : IUserSess
             session.Revoke();
         }
     }
+
+    public async Task RevokeFamilyAsync(
+        Guid tokenFamilyId,
+        CancellationToken cancellationToken = default
+    )
+    {
+        List<UserSession> sessions = await dbContext
+            .Set<UserSession>()
+            .Where(x => x.TokenFamilyId == tokenFamilyId && x.RevokedAtUtc == null)
+            .ToListAsync(cancellationToken);
+        foreach (UserSession session in sessions)
+        {
+            session.Revoke();
+        }
+    }
+
+    public async Task<IReadOnlyList<UserSession>> ListForUserAsync(
+        int userId,
+        CancellationToken cancellationToken = default
+    )
+    {
+        return await dbContext
+            .Set<UserSession>()
+            .AsNoTracking()
+            .Where(x => x.UserId == userId)
+            .OrderByDescending(x => x.CreatedOnUtc)
+            .ToListAsync(cancellationToken);
+    }
 }

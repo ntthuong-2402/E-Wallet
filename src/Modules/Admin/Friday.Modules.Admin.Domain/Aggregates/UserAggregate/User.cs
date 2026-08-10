@@ -20,6 +20,10 @@ public sealed class User : AggregateRoot
     public string? Notes { get; private set; }
     public bool IsActive { get; private set; }
     public bool IsLocked { get; private set; }
+    public bool MustChangePassword { get; private set; }
+    public int FailedLoginCount { get; private set; }
+    public DateTime? LockoutEndUtc { get; private set; }
+    public DateTime? LastFailedLoginAtUtc { get; private set; }
 
     public UserPassword? PasswordCredential { get; private set; }
 
@@ -58,6 +62,7 @@ public sealed class User : AggregateRoot
             Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim(),
             IsActive = true,
             IsLocked = false,
+            MustChangePassword = true,
         };
 
         user.Raise(new UserCreatedDomainEvent(user.Id, user.Username, user.Email));
@@ -81,6 +86,47 @@ public sealed class User : AggregateRoot
         {
             PasswordCredential.UpdateHash(passwordHash);
         }
+    }
+
+    public void MarkPasswordChanged()
+    {
+        MustChangePassword = false;
+        Touch();
+    }
+
+    public void RequirePasswordChange()
+    {
+        MustChangePassword = true;
+        Touch();
+    }
+
+    public bool IsTemporarilyLocked(DateTime utcNow) => LockoutEndUtc > utcNow;
+
+    public void RecordLoginFailure(DateTime utcNow, int maximumAttempts, TimeSpan lockoutDuration)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(maximumAttempts, 1);
+        if (lockoutDuration <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(lockoutDuration));
+        }
+
+        FailedLoginCount++;
+        LastFailedLoginAtUtc = utcNow;
+        if (FailedLoginCount >= maximumAttempts)
+        {
+            LockoutEndUtc = utcNow.Add(lockoutDuration);
+            FailedLoginCount = 0;
+        }
+
+        Touch();
+    }
+
+    public void RecordLoginSuccess()
+    {
+        FailedLoginCount = 0;
+        LastFailedLoginAtUtc = null;
+        LockoutEndUtc = null;
+        Touch();
     }
 
     public void UpdateProfile(
@@ -164,6 +210,28 @@ public sealed class User : AggregateRoot
         }
 
         IsLocked = false;
+        Touch();
+    }
+
+    public void Activate()
+    {
+        if (IsActive)
+        {
+            return;
+        }
+
+        IsActive = true;
+        Touch();
+    }
+
+    public void Deactivate()
+    {
+        if (!IsActive)
+        {
+            return;
+        }
+
+        IsActive = false;
         Touch();
     }
 

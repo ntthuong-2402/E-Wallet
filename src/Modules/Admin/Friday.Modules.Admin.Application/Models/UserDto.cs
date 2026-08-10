@@ -15,6 +15,7 @@ public sealed record UserDto(
     string? Notes,
     bool IsActive,
     bool IsLocked,
+    bool MustChangePassword,
     int[] RoleIds
 )
 {
@@ -32,6 +33,7 @@ public sealed record UserDto(
             user.Notes,
             user.IsActive,
             user.IsLocked,
+            user.MustChangePassword,
             user.UserRoles.Select(x => x.RoleId).ToArray()
         );
 }

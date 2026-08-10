@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Friday.API.Common;
 using Friday.BuildingBlocks.Application.Errors;
 using Friday.BuildingBlocks.Application.Exceptions;
+using Microsoft.EntityFrameworkCore;
 
 namespace Friday.API.Middlewares;
 
@@ -67,6 +68,11 @@ public sealed class ExceptionHandlingMiddleware(
                 StatusCodes.Status400BadRequest,
                 ErrorCodes.Common.BadRequest,
                 exception.Message
+            ),
+            DbUpdateConcurrencyException => (
+                StatusCodes.Status401Unauthorized,
+                ErrorCodes.Admin.InvalidRefreshToken,
+                "The security state changed concurrently; retry with current credentials."
             ),
             _ => (
                 StatusCodes.Status500InternalServerError,

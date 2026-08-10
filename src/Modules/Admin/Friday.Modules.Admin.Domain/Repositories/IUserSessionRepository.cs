@@ -17,4 +17,9 @@ public interface IUserSessionRepository
     );
 
     Task RevokeAllForUserAsync(int userId, CancellationToken cancellationToken = default);
+    Task RevokeFamilyAsync(Guid tokenFamilyId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<UserSession>> ListForUserAsync(
+        int userId,
+        CancellationToken cancellationToken = default
+    );
 }

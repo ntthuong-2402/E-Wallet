@@ -21,6 +21,12 @@ public static class ErrorCodes
         public const string UserInactive = "ADMIN_USER_INACTIVE";
         public const string UserLockedAuth = "ADMIN_USER_LOCKED";
         public const string PasswordRequired = "ADMIN_PASSWORD_REQUIRED";
+        public const string PasswordPolicyViolation = "ADMIN_PASSWORD_POLICY_VIOLATION";
+        public const string CurrentPasswordInvalid = "ADMIN_CURRENT_PASSWORD_INVALID";
+        public const string AccountTemporarilyLocked = "ADMIN_ACCOUNT_TEMPORARILY_LOCKED";
+        public const string PasswordChangeRequired = "ADMIN_PASSWORD_CHANGE_REQUIRED";
+        public const string PermissionDenied = "ADMIN_PERMISSION_DENIED";
+        public const string LastAdministratorProtection = "ADMIN_LAST_ADMINISTRATOR_PROTECTION";
         public const string InvalidRefreshToken = "ADMIN_INVALID_REFRESH_TOKEN";
         public const string SessionInvalid = "ADMIN_SESSION_INVALID";
         public const string RegistrationDisabled = "ADMIN_REGISTRATION_DISABLED";

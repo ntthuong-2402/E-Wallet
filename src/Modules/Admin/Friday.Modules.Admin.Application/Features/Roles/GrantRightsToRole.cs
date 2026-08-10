@@ -1,6 +1,7 @@
 using Friday.BuildingBlocks.Application.Errors;
 using Friday.BuildingBlocks.Application.Exceptions;
 using Friday.Modules.Admin.Application.Models;
+using Friday.Modules.Admin.Application.Auditing;
 using Friday.Modules.Admin.Domain.Repositories;
 using LinKit.Core.Cqrs;
 using Microsoft.AspNetCore.Http;
@@ -9,7 +10,7 @@ namespace Friday.Modules.Admin.Application.Features.Roles;
 
 public sealed record GrantRightsToRoleCommand(int RoleId, int[] RightIds) : ICommand<RoleDto>;
 
-public sealed class GrantRightsToRoleHandler(IRoleRepository roles, IRightRepository rights)
+public sealed class GrantRightsToRoleHandler(IRoleRepository roles, IRightRepository rights, ISecurityAuditWriter audit)
     : ICommandHandler<GrantRightsToRoleCommand, RoleDto>
 {
     public async Task<RoleDto> HandleAsync(
@@ -45,6 +46,7 @@ public sealed class GrantRightsToRoleHandler(IRoleRepository roles, IRightReposi
         }
 
         role.SetRights(rightIds);
+        await audit.WriteAsync(new("ROLE_RIGHTS_CHANGED", "SUCCESS", TargetType: "ROLE", TargetId: role.Id.ToString()), cancellationToken);
         return new RoleDto(
             role.Id,
             role.Code,

@@ -13,6 +13,10 @@ public sealed class UserSession
     public DateTime ExpiresAtUtc { get; private set; }
     public DateTime CreatedOnUtc { get; private set; }
     public DateTime? RevokedAtUtc { get; private set; }
+    public Guid TokenFamilyId { get; private set; }
+    public DateTime? ReplacedAtUtc { get; private set; }
+    public DateTime? ReuseDetectedAtUtc { get; private set; }
+    public long Version { get; private set; }
     public string? IpAddress { get; private set; }
     public string? UserAgent { get; private set; }
 
@@ -30,6 +34,7 @@ public sealed class UserSession
         return new UserSession
         {
             Id = Guid.NewGuid(),
+            TokenFamilyId = Guid.NewGuid(),
             UserId = userId,
             RefreshTokenHash = refreshTokenHashHex,
             ExpiresAtUtc = expiresAtUtc,
@@ -39,12 +44,32 @@ public sealed class UserSession
         };
     }
 
-    public void Revoke() => RevokedAtUtc = DateTime.UtcNow;
+    public void Revoke() => RevokedAtUtc ??= DateTime.UtcNow;
 
-    public void RotateRefresh(string newRefreshTokenHashHex, DateTime newExpiresAtUtc)
+    public UserSession ReplaceWith(string newRefreshTokenHashHex, DateTime newExpiresAtUtc)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(newRefreshTokenHashHex);
-        RefreshTokenHash = newRefreshTokenHashHex;
-        ExpiresAtUtc = newExpiresAtUtc;
+        ReplacedAtUtc = DateTime.UtcNow;
+        Revoke();
+        Version++;
+
+        return new UserSession
+        {
+            Id = Guid.NewGuid(),
+            UserId = UserId,
+            TokenFamilyId = TokenFamilyId,
+            RefreshTokenHash = newRefreshTokenHashHex,
+            ExpiresAtUtc = newExpiresAtUtc,
+            CreatedOnUtc = DateTime.UtcNow,
+            IpAddress = IpAddress,
+            UserAgent = UserAgent,
+        };
+    }
+
+
+    public void MarkReuseDetected()
+    {
+        ReuseDetectedAtUtc ??= DateTime.UtcNow;
+        Revoke();
     }
 }

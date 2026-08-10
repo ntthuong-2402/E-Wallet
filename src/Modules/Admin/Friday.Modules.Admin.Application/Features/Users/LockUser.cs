@@ -1,6 +1,8 @@
 using Friday.BuildingBlocks.Application.Errors;
 using Friday.BuildingBlocks.Application.Exceptions;
 using Friday.Modules.Admin.Application.Models;
+using Friday.Modules.Admin.Application.Auditing;
+using Friday.Modules.Admin.Application.Authorization;
 using Friday.Modules.Admin.Domain.Repositories;
 using LinKit.Core.Cqrs;
 using Microsoft.AspNetCore.Http;
@@ -9,7 +11,7 @@ namespace Friday.Modules.Admin.Application.Features.Users;
 
 public sealed record LockUserCommand(int UserId) : ICommand<UserDto>;
 
-public sealed class LockUserHandler(IUserRepository users, IUserSessionRepository sessions)
+public sealed class LockUserHandler(IUserRepository users, IUserSessionRepository sessions, ISecurityAuditWriter audit, IPrivilegedAccountGuard privilegedAccountGuard)
     : ICommandHandler<LockUserCommand, UserDto>
 {
     public async Task<UserDto> HandleAsync(
@@ -30,8 +32,10 @@ public sealed class LockUserHandler(IUserRepository users, IUserSessionRepositor
             );
         }
 
+        await privilegedAccountGuard.EnsureCanDisableAsync(user.Id, cancellationToken);
         user.Lock();
         await sessions.RevokeAllForUserAsync(user.Id, cancellationToken);
+        await audit.WriteAsync(new("USER_LOCKED", "SUCCESS", TargetType: "USER", TargetId: user.Id.ToString()), cancellationToken);
 
         return UserDto.FromUser(user);
     }

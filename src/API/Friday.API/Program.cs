@@ -1,4 +1,5 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using Friday.API.Common;
 using Friday.API.Configuration;
 using Friday.API.Middlewares;
@@ -12,9 +13,11 @@ using Friday.BuildingBlocks.Infrastructure.Persistence;
 using Friday.Modules.Admin.Application;
 using Friday.Modules.Admin.Application.Configuration;
 using Friday.Modules.Admin.Infrastructure;
+using Friday.Modules.Admin.Infrastructure.Bootstrap;
 using Friday.Modules.Sample.Application;
 using Friday.Modules.Sample.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using Serilog.Events;
@@ -44,6 +47,16 @@ try
     builder.Services.AddSampleInfrastructure();
 
     builder.Services.AddHttpContextAccessor();
+    builder.Services.AddRateLimiter(options =>
+    {
+        options.AddFixedWindowLimiter("auth-strict", limiter =>
+        {
+            limiter.PermitLimit = 10;
+            limiter.Window = TimeSpan.FromMinutes(1);
+            limiter.QueueLimit = 0;
+            limiter.AutoReplenishment = true;
+        });
+    });
 
     JwtSettings jwtBind =
         builder.Configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>()
@@ -81,6 +94,12 @@ try
     Microsoft.Extensions.Logging.ILogger startupLogger = app.Logger;
     startupLogger.LogInformation("Friday.API build complete; running database migrations if enabled.");
     await app.Services.ApplyEfThenDataMigrationsAsync(app.Configuration);
+    await using (AsyncServiceScope bootstrapScope = app.Services.CreateAsyncScope())
+    {
+        await bootstrapScope.ServiceProvider
+            .GetRequiredService<AdminSecurityBootstrapper>()
+            .ApplyAsync();
+    }
     startupLogger.LogInformation("Database migration step finished; configuring HTTP pipeline.");
 
     app.UseMiddleware<CorrelationIdMiddleware>();
@@ -125,6 +144,8 @@ try
     }
 
     app.UseHttpsRedirection();
+
+    app.UseRateLimiter();
 
     app.UseAuthentication();
     app.UseAuthorization();

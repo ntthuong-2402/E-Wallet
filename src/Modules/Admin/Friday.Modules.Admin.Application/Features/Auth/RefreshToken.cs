@@ -3,6 +3,8 @@ using Friday.BuildingBlocks.Application.Exceptions;
 using Friday.Modules.Admin.Application.Configuration;
 using Friday.Modules.Admin.Application.Models;
 using Friday.Modules.Admin.Application.Security;
+using Friday.Modules.Admin.Application.Auditing;
+using Friday.BuildingBlocks.Application.Abstractions;
 using Friday.Modules.Admin.Domain.Aggregates.UserAggregate;
 using Friday.Modules.Admin.Domain.Repositories;
 using LinKit.Core.Cqrs;
@@ -18,7 +20,9 @@ public sealed class RefreshTokenCommandHandler(
     IUserSessionRepository sessions,
     IRoleRepository roles,
     IJwtTokenIssuer jwt,
-    IOptions<JwtSettings> jwtSettings
+    IOptions<JwtSettings> jwtSettings,
+    ISecurityAuditWriter audit,
+    IUnitOfWork unitOfWork
 ) : ICommandHandler<RefreshTokenCommand, RefreshTokenResponseDto>
 {
     public async Task<RefreshTokenResponseDto> HandleAsync(
@@ -34,6 +38,15 @@ public sealed class RefreshTokenCommandHandler(
 
         if (session is null)
         {
+            UserSession? consumed = await sessions.GetByRefreshTokenHashAsync(hash, cancellationToken);
+            if (consumed?.ReplacedAtUtc is not null)
+            {
+                consumed.MarkReuseDetected();
+                await sessions.RevokeFamilyAsync(consumed.TokenFamilyId, cancellationToken);
+                await audit.WriteAsync(new("REFRESH_TOKEN_REUSE_DETECTED", "FAILURE", ActorUserId: consumed.UserId, TargetType: "TOKEN_FAMILY", TargetId: consumed.TokenFamilyId.ToString(), ReasonCode: ErrorCodes.Admin.InvalidRefreshToken), cancellationToken);
+                await unitOfWork.CommitAsync(cancellationToken);
+            }
+
             throw new FridayException(
                 ErrorCodes.Admin.InvalidRefreshToken,
                 "Refresh token is invalid or expired.",
@@ -67,9 +80,10 @@ public sealed class RefreshTokenCommandHandler(
         string newRefresh = RefreshTokenUtilities.GenerateOpaqueToken();
         string newHash = RefreshTokenUtilities.Hash(newRefresh);
         int refreshDays = Math.Clamp(jwtSettings.Value.RefreshTokenDays, 1, 365);
-        session.RotateRefresh(newHash, DateTime.UtcNow.AddDays(refreshDays));
+        UserSession replacement = session.ReplaceWith(newHash, DateTime.UtcNow.AddDays(refreshDays));
+        await sessions.AddAsync(replacement, cancellationToken);
 
-        JwtAccessTokenResult access = jwt.CreateAccessToken(user.Id, session.Id, roleCodes);
+        JwtAccessTokenResult access = jwt.CreateAccessToken(user.Id, replacement.Id, roleCodes);
 
         return new RefreshTokenResponseDto(
             access.Token,

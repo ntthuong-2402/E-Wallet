@@ -22,6 +22,8 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(x => x.Notes).HasMaxLength(2000);
         builder.Property(x => x.IsActive).IsRequired();
         builder.Property(x => x.IsLocked).IsRequired();
+        builder.Property(x => x.MustChangePassword).IsRequired();
+        builder.Property(x => x.FailedLoginCount).IsRequired();
         builder.Property(x => x.CreatedOnUtc).IsRequired();
         builder.Property(x => x.UpdatedOnUtc).IsRequired();
 

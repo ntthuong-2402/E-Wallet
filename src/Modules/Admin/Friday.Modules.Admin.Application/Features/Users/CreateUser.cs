@@ -1,6 +1,8 @@
 using Friday.BuildingBlocks.Application.Errors;
 using Friday.BuildingBlocks.Application.Exceptions;
 using Friday.Modules.Admin.Application.Models;
+using Friday.Modules.Admin.Application.Security;
+using Friday.Modules.Admin.Application.Auditing;
 using Friday.Modules.Admin.Domain.Aggregates.UserAggregate;
 using Friday.Modules.Admin.Domain.Repositories;
 using Friday.Modules.Admin.Domain.Security;
@@ -26,7 +28,9 @@ public sealed record CreateUserCommand(
 public sealed class CreateUserHandler(
     IUserRepository users,
     IRoleRepository roles,
-    IPasswordHasher<CredentialUser> passwordHasher
+    IPasswordHasher<CredentialUser> passwordHasher,
+    IPasswordPolicy passwordPolicy,
+    ISecurityAuditWriter audit
 ) : ICommandHandler<CreateUserCommand, UserDto>
 {
     private static readonly CredentialUser CredentialMarker = new();
@@ -36,10 +40,7 @@ public sealed class CreateUserHandler(
         CancellationToken cancellationToken
     )
     {
-        if (string.IsNullOrWhiteSpace(request.Password))
-        {
-            throw new FridayException(ErrorCodes.Admin.PasswordRequired, "Password is required.");
-        }
+        passwordPolicy.Validate(request.Password);
 
         if (await users.ExistsByUsernameAsync(request.Username, cancellationToken))
         {
@@ -94,6 +95,7 @@ public sealed class CreateUserHandler(
         }
 
         await users.AddAsync(user, cancellationToken);
+        await audit.WriteAsync(new("USER_CREATED", "SUCCESS", TargetType: "USER", TargetId: user.UserCode), cancellationToken);
 
         return UserDto.FromUser(user);
     }

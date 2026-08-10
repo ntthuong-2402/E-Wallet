@@ -1,6 +1,7 @@
 using Friday.BuildingBlocks.Application.Errors;
 using Friday.BuildingBlocks.Application.Exceptions;
 using Friday.Modules.Admin.Application.Models;
+using Friday.Modules.Admin.Application.Auditing;
 using Friday.Modules.Admin.Domain.Repositories;
 using LinKit.Core.Cqrs;
 using Microsoft.AspNetCore.Http;
@@ -9,7 +10,7 @@ namespace Friday.Modules.Admin.Application.Features.Users;
 
 public sealed record AssignRoleToUserCommand(int UserId, int RoleId) : ICommand<UserDto>;
 
-public sealed class AssignRoleToUserHandler(IUserRepository users, IRoleRepository roles)
+public sealed class AssignRoleToUserHandler(IUserRepository users, IRoleRepository roles, ISecurityAuditWriter audit)
     : ICommandHandler<AssignRoleToUserCommand, UserDto>
 {
     public async Task<UserDto> HandleAsync(
@@ -44,6 +45,7 @@ public sealed class AssignRoleToUserHandler(IUserRepository users, IRoleReposito
         }
 
         user.AssignRole(request.RoleId);
+        await audit.WriteAsync(new("ROLE_ASSIGNED", "SUCCESS", TargetType: "USER", TargetId: user.Id.ToString(), MetadataJson: $"{{\"roleId\":{request.RoleId}}}"), cancellationToken);
 
         return UserDto.FromUser(user);
     }

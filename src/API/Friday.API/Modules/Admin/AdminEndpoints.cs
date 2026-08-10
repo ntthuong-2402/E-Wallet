@@ -2,6 +2,8 @@ using Friday.API.Common;
 using Friday.Modules.Admin.Application.Features.Rights;
 using Friday.Modules.Admin.Application.Features.Roles;
 using Friday.Modules.Admin.Application.Features.Users;
+using Friday.Modules.Admin.Application.Authorization;
+using Friday.Modules.Admin.Application.Features.Audit;
 using Friday.Modules.Admin.Application.Models;
 using LinKit.Core.Cqrs;
 
@@ -28,7 +30,7 @@ public static class AdminEndpoints
                 UserDto response = await mediator.SendAsync(command, cancellationToken);
                 return ApiResults.Ok(context, response);
             }
-        );
+        ).RequireAuthorization(AdminPermissions.UsersCreate);
 
         group.MapGet(
             "/users",
@@ -40,7 +42,7 @@ public static class AdminEndpoints
                 );
                 return ApiResults.Ok(context, response);
             }
-        );
+        ).RequireAuthorization(AdminPermissions.UsersRead);
 
         group.MapGet(
             "/users/{userId:int}",
@@ -57,7 +59,7 @@ public static class AdminEndpoints
                 );
                 return ApiResults.Ok(context, response);
             }
-        );
+        ).RequireAuthorization(AdminPermissions.UsersRead);
 
         group.MapPut(
             "/users/{userId:int}",
@@ -84,7 +86,7 @@ public static class AdminEndpoints
                 UserDto response = await mediator.SendAsync(command, cancellationToken);
                 return ApiResults.Ok(context, response);
             }
-        );
+        ).RequireAuthorization(AdminPermissions.UsersUpdate);
 
         group.MapPost(
             "/users/{userId:int}/password",
@@ -102,7 +104,7 @@ public static class AdminEndpoints
                 );
                 return ApiResults.Ok(context, response);
             }
-        );
+        ).RequireAuthorization(AdminPermissions.UsersResetPassword);
 
         group.MapPost(
             "/users/{userId:int}/roles/{roleId:int}",
@@ -120,7 +122,7 @@ public static class AdminEndpoints
                 );
                 return ApiResults.Ok(context, response);
             }
-        );
+        ).RequireAuthorization(AdminPermissions.UsersAssignRole);
 
         group.MapPost(
             "/users/{userId:int}/lock",
@@ -137,7 +139,52 @@ public static class AdminEndpoints
                 );
                 return ApiResults.Ok(context, response);
             }
-        );
+        ).RequireAuthorization(AdminPermissions.UsersLock);
+
+        group.MapPost(
+            "/users/{userId:int}/unlock",
+            async (HttpContext context, int userId, IMediator mediator, CancellationToken cancellationToken) =>
+            {
+                UserDto response = await mediator.SendAsync(new UnlockUserCommand(userId), cancellationToken);
+                return ApiResults.Ok(context, response);
+            }
+        ).RequireAuthorization(AdminPermissions.UsersUnlock);
+
+        group.MapPost(
+            "/users/{userId:int}/activate",
+            async (HttpContext context, int userId, IMediator mediator, CancellationToken cancellationToken) =>
+            {
+                UserDto response = await mediator.SendAsync(new SetUserActivationCommand(userId, true), cancellationToken);
+                return ApiResults.Ok(context, response);
+            }
+        ).RequireAuthorization(AdminPermissions.UsersActivate);
+
+        group.MapPost(
+            "/users/{userId:int}/deactivate",
+            async (HttpContext context, int userId, IMediator mediator, CancellationToken cancellationToken) =>
+            {
+                UserDto response = await mediator.SendAsync(new SetUserActivationCommand(userId, false), cancellationToken);
+                return ApiResults.Ok(context, response);
+            }
+        ).RequireAuthorization(AdminPermissions.UsersDeactivate);
+
+        group.MapGet(
+            "/users/{userId:int}/sessions",
+            async (HttpContext context, int userId, IMediator mediator, CancellationToken cancellationToken) =>
+            {
+                IReadOnlyList<UserSessionDto> response = await mediator.QueryAsync(new GetUserSessionsQuery(userId), cancellationToken);
+                return ApiResults.Ok(context, response);
+            }
+        ).RequireAuthorization(AdminPermissions.UsersRead);
+
+        group.MapPost(
+            "/users/{userId:int}/sessions/revoke",
+            async (HttpContext context, int userId, IMediator mediator, CancellationToken cancellationToken) =>
+            {
+                bool response = await mediator.SendAsync(new RevokeUserSessionsCommand(userId), cancellationToken);
+                return ApiResults.Ok(context, response);
+            }
+        ).RequireAuthorization(AdminPermissions.UsersRevokeSessions);
 
         group.MapPost(
             "/roles",
@@ -151,7 +198,7 @@ public static class AdminEndpoints
                 var response = await mediator.SendAsync(command, cancellationToken);
                 return ApiResults.Ok(context, response);
             }
-        );
+        ).RequireAuthorization(AdminPermissions.RolesManage);
 
         group.MapGet(
             "/roles",
@@ -160,7 +207,7 @@ public static class AdminEndpoints
                 var response = await mediator.QueryAsync(new GetRolesQuery(), cancellationToken);
                 return ApiResults.Ok(context, response);
             }
-        );
+        ).RequireAuthorization(AdminPermissions.RolesRead);
 
         group.MapPost(
             "/roles/{roleId:int}/rights",
@@ -178,7 +225,7 @@ public static class AdminEndpoints
                 );
                 return ApiResults.Ok(context, response);
             }
-        );
+        ).RequireAuthorization(AdminPermissions.RolesManage);
 
         group.MapPost(
             "/rights",
@@ -192,7 +239,7 @@ public static class AdminEndpoints
                 var response = await mediator.SendAsync(command, cancellationToken);
                 return ApiResults.Ok(context, response);
             }
-        );
+        ).RequireAuthorization(AdminPermissions.RightsManage);
 
         group.MapGet(
             "/rights",
@@ -201,7 +248,19 @@ public static class AdminEndpoints
                 var response = await mediator.QueryAsync(new GetRightsQuery(), cancellationToken);
                 return ApiResults.Ok(context, response);
             }
-        );
+        ).RequireAuthorization(AdminPermissions.RightsRead);
+
+        group.MapGet(
+            "/audit-events",
+            async (HttpContext context, int? skip, int? take, IMediator mediator, CancellationToken cancellationToken) =>
+            {
+                IReadOnlyList<SecurityAuditEventDto> response = await mediator.QueryAsync(
+                    new GetSecurityAuditEventsQuery(skip ?? 0, take ?? 50),
+                    cancellationToken
+                );
+                return ApiResults.Ok(context, response);
+            }
+        ).RequireAuthorization(AdminPermissions.AuditRead);
 
         return endpoints;
     }

@@ -22,4 +22,7 @@
     <Project Path="src/Modules/Sample/Friday.Modules.Sample.Domain/Friday.Modules.Sample.Domain.csproj" />
     <Project Path="src/Modules/Sample/Friday.Modules.Sample.Infrastructure/Friday.Modules.Sample.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Friday.Modules.Admin.UnitTests/Friday.Modules.Admin.UnitTests.csproj" />
+  </Folder>
 </Solution>
