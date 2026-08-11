@@ -10,12 +10,17 @@ internal static class RelationalDbContextConfigurer
     public static void Configure(
         DbContextOptionsBuilder options,
         string? connectionString,
-        RelationalDatabaseProvider provider
+        RelationalDatabaseProvider provider,
+        string inMemoryDatabaseName
     )
     {
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            options.UseInMemoryDatabase("Friday.Shared");
+            options.UseInMemoryDatabase(
+                string.IsNullOrWhiteSpace(inMemoryDatabaseName)
+                    ? "Friday.Shared"
+                    : inMemoryDatabaseName
+            );
             return;
         }
 

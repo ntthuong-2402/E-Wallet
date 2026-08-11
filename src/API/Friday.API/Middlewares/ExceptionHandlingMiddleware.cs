@@ -29,13 +29,23 @@ public sealed class ExceptionHandlingMiddleware(
             );
             string traceId = Activity.Current?.TraceId.ToString() ?? context.TraceIdentifier;
 
-            logger.LogError(
-                exception,
-                "Unhandled exception: {Code} - {Message}. TraceId={TraceId}",
-                code,
-                exception.Message,
-                traceId
-            );
+            if (statusCode >= 500)
+            {
+                logger.LogError(
+                    exception,
+                    "Unhandled exception: {Code}. TraceId={TraceId}",
+                    code,
+                    traceId
+                );
+            }
+            else
+            {
+                logger.LogWarning(
+                    "Handled request failure: {Code}. TraceId={TraceId}",
+                    code,
+                    traceId
+                );
+            }
 
             context.Response.StatusCode = statusCode;
             context.Response.ContentType = "application/json";
@@ -69,10 +79,15 @@ public sealed class ExceptionHandlingMiddleware(
                 ErrorCodes.Common.BadRequest,
                 exception.Message
             ),
+            ConcurrencyConflictException => (
+                StatusCodes.Status409Conflict,
+                ErrorCodes.Common.ConcurrencyConflict,
+                exception.Message
+            ),
             DbUpdateConcurrencyException => (
-                StatusCodes.Status401Unauthorized,
-                ErrorCodes.Admin.InvalidRefreshToken,
-                "The security state changed concurrently; retry with current credentials."
+                StatusCodes.Status409Conflict,
+                ErrorCodes.Common.ConcurrencyConflict,
+                "The persisted state changed concurrently; reload and retry."
             ),
             _ => (
                 StatusCodes.Status500InternalServerError,

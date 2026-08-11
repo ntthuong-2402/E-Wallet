@@ -12,6 +12,7 @@ public static class AdminPermissions
     public const string UsersResetPassword = "USERS_RESET_PASSWORD";
     public const string UsersRevokeSessions = "USERS_REVOKE_SESSIONS";
     public const string UsersAssignRole = "USERS_ASSIGN_ROLE";
+    public const string UsersRemoveRole = "USERS_REMOVE_ROLE";
     public const string RolesRead = "ROLES_READ";
     public const string RolesManage = "ROLES_MANAGE";
     public const string RightsRead = "RIGHTS_READ";
@@ -22,6 +23,7 @@ public static class AdminPermissions
     [
         UsersRead, UsersCreate, UsersUpdate, UsersLock, UsersUnlock, UsersActivate,
         UsersDeactivate, UsersResetPassword, UsersRevokeSessions, UsersAssignRole,
+        UsersRemoveRole,
         RolesRead, RolesManage, RightsRead, RightsManage, AuditRead,
     ];
 }

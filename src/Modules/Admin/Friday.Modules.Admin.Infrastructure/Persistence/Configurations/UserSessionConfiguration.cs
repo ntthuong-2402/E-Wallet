@@ -16,7 +16,7 @@ public sealed class UserSessionConfiguration : IEntityTypeConfiguration<UserSess
         builder.Property(x => x.UserAgent).HasMaxLength(512);
         builder.Property(x => x.Version).IsConcurrencyToken().HasDefaultValue(0L).IsRequired();
 
-        builder.HasIndex(x => x.RefreshTokenHash);
+        builder.HasIndex(x => x.RefreshTokenHash).IsUnique();
         builder.HasIndex(x => x.UserId);
         builder.HasIndex(x => x.TokenFamilyId);
 

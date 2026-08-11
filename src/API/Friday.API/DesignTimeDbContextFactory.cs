@@ -15,7 +15,7 @@ public sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<Fri
         DbContextOptionsBuilder<FridayDbContext> options = new();
         string connectionString =
             Environment.GetEnvironmentVariable("FRIDAY_DESIGN_TIME_PG")
-            ?? "Host=127.0.0.1;Port=5432;Database=friday;Username=postgres;Password=postgres";
+            ?? "Host=127.0.0.1;Port=5432;Database=friday;Username=friday;Password=friday";
         options.UseNpgsql(connectionString);
         return new FridayDbContext(options.Options);
     }

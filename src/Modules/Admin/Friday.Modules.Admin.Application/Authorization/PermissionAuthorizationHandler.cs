@@ -31,7 +31,7 @@ public sealed class PermissionAuthorizationHandler(
             return;
         }
 
-        await audit.WriteAsync(
+        await audit.WriteImmediateAsync(
             new SecurityAuditRecord(
                 "PERMISSION_DENIED",
                 "FAILURE",

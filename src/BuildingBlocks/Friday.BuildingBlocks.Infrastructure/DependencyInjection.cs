@@ -40,7 +40,12 @@ public static class DependencyInjection
         ));
 
         services.AddDbContext<FridayDbContext>(options =>
-            RelationalDbContextConfigurer.Configure(options, connectionString, dbSettings.Provider)
+            RelationalDbContextConfigurer.Configure(
+                options,
+                connectionString,
+                dbSettings.Provider,
+                dbSettings.InMemoryDatabaseName
+            )
         );
 
         if (!string.IsNullOrWhiteSpace(connectionString))
@@ -81,6 +86,7 @@ public static class DependencyInjection
         services.AddScoped<IDomainEventDispatcher, DomainEventDispatcher>();
 
         services.AddScoped<IUnitOfWork, EfUnitOfWork>();
+        services.AddScoped<IUnitOfWorkResolver, KeyedUnitOfWorkResolver>();
 
         services.AddScoped<IErrorLocalizationStore, EfErrorLocalizationStore>();
 

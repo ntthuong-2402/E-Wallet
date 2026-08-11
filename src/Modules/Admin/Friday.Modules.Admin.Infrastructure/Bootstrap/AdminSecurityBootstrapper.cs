@@ -1,9 +1,14 @@
 using Friday.BuildingBlocks.Infrastructure.Persistence;
+using Friday.BuildingBlocks.Application.Authorization;
 using Friday.Modules.Admin.Application.Authorization;
 using Friday.Modules.Admin.Application.Configuration;
+using Friday.Modules.Admin.Application.Security;
+using Friday.Modules.Admin.Application.Auditing;
 using Friday.Modules.Admin.Domain.Aggregates.RightAggregate;
 using Friday.Modules.Admin.Domain.Aggregates.RoleAggregate;
 using Friday.Modules.Admin.Domain.Aggregates.UserAggregate;
+using Friday.Modules.Admin.Domain.Security;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -13,13 +18,24 @@ namespace Friday.Modules.Admin.Infrastructure.Bootstrap;
 public sealed class AdminSecurityBootstrapper(
     FridayDbContext dbContext,
     IOptions<AdminBootstrapOptions> options,
-    ILogger<AdminSecurityBootstrapper> logger
+    IPasswordHasher<CredentialUser> passwordHasher,
+    IPasswordPolicy passwordPolicy,
+    ISecurityAuditWriter audit,
+    ILogger<AdminSecurityBootstrapper> logger,
+    IEnumerable<IPermissionContribution> permissionContributions
 )
 {
+    private static readonly CredentialUser CredentialMarker = new();
+
     public async Task ApplyAsync(CancellationToken cancellationToken = default)
     {
         List<Right> rights = await dbContext.Set<Right>().ToListAsync(cancellationToken);
-        foreach (string code in AdminPermissions.All)
+        string[] permissionCodes = permissionContributions
+            .SelectMany(x => x.Permissions)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(x => x, StringComparer.Ordinal)
+            .ToArray();
+        foreach (string code in permissionCodes)
         {
             if (rights.All(x => !string.Equals(x.Code, code, StringComparison.Ordinal)))
             {
@@ -47,29 +63,109 @@ public sealed class AdminSecurityBootstrapper(
             superAdmin.SetRights(desiredRightIds);
         }
 
-        string userCode = options.Value.SuperAdminUserCode.Trim().ToUpperInvariant();
-        if (string.IsNullOrEmpty(userCode))
+        AdminBootstrapOptions bootstrap = options.Value;
+        if (!bootstrap.Enabled)
         {
             logger.LogWarning(
-                "Admin bootstrap created SUPER_ADMIN permissions but no user was assigned because Admin:Bootstrap:SuperAdminUserCode is empty."
+                "Admin bootstrap created SUPER_ADMIN permissions but system-user provisioning is disabled."
             );
         }
         else
         {
+            string userCode = RequireValue(bootstrap.UserCode, nameof(bootstrap.UserCode))
+                .ToUpperInvariant();
+            string username = RequireValue(bootstrap.Username, nameof(bootstrap.Username));
+            string email = RequireValue(bootstrap.Email, nameof(bootstrap.Email)).ToLowerInvariant();
+            string fullName = RequireValue(bootstrap.FullName, nameof(bootstrap.FullName));
+
             User? user = await dbContext
                 .Set<User>()
+                .Include(x => x.PasswordCredential)
                 .Include(x => x.UserRoles)
                 .FirstOrDefaultAsync(x => x.UserCode == userCode, cancellationToken);
+            bool userCreated = user is null;
             if (user is null)
             {
+                bool identityAlreadyUsed = await dbContext
+                    .Set<User>()
+                    .AnyAsync(
+                        x => x.Username.ToUpper() == username.ToUpper()
+                            || x.Email == email,
+                        cancellationToken
+                    );
+                if (identityAlreadyUsed)
+                {
+                    throw new InvalidOperationException(
+                        "Admin bootstrap username or email is already assigned to another user."
+                    );
+                }
+
+                string initialPassword = RequireValue(
+                    bootstrap.InitialPassword,
+                    nameof(bootstrap.InitialPassword)
+                );
+                passwordPolicy.Validate(initialPassword);
+
+                user = User.Create(
+                    userCode,
+                    username,
+                    email,
+                    fullName,
+                    null,
+                    null,
+                    null,
+                    null,
+                    "System-provisioned administrator"
+                );
+                string passwordHash = passwordHasher.HashPassword(
+                    CredentialMarker,
+                    initialPassword
+                );
+                user.SetPasswordCredential(UserPassword.Create(user, passwordHash));
+                await dbContext.Set<User>().AddAsync(user, cancellationToken);
+
+                logger.LogInformation(
+                    "Provisioned initial system administrator with user code {UserCode}; password change is required on first use.",
+                    userCode
+                );
+            }
+            else if (
+                !string.Equals(user.Username, username, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(user.Email, email, StringComparison.OrdinalIgnoreCase)
+            )
+            {
                 throw new InvalidOperationException(
-                    $"Bootstrap super-admin user code '{userCode}' was not found."
+                    $"Bootstrap user code '{userCode}' exists but its username or email does not match configuration."
                 );
             }
 
             user.AssignRole(superAdmin.Id);
+            if (userCreated)
+            {
+                await audit.WriteAsync(
+                    new(
+                        "SYSTEM_ADMIN_BOOTSTRAPPED",
+                        "SUCCESS",
+                        TargetType: "USER",
+                        TargetId: user.UserCode
+                    ),
+                    cancellationToken
+                );
+            }
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private static string RequireValue(string value, string propertyName)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new InvalidOperationException(
+                $"Admin bootstrap configuration '{propertyName}' is required."
+            );
+        }
+
+        return value.Trim();
     }
 }

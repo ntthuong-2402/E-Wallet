@@ -1,5 +1,7 @@
 # Friday Testing Pattern
 
+> Update 2026-08-10: this historical inventory is superseded for Admin security. The repository now contains 4 Admin domain unit tests and 7 `WebApplicationFactory` integration tests covering bootstrap, mandatory password change/session revocation, permission denial, concurrent refresh, role removal/last-admin protection, bounded user search, and audit filtering. Both test projects are included in `Friday.slnx`. PostgreSQL migration P1 was smoke-verified against a disposable database.
+
 Scope: existing automated and manual testing assets, with Login/Admin as the requested reference feature. This is an inventory of what exists; it does not propose or invent a future testing architecture.
 
 Status vocabulary: **CONFIRMED**, **PARTIAL**, **NOT_IMPLEMENTED**, **UNKNOWN**.

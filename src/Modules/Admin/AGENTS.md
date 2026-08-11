@@ -29,11 +29,11 @@ Admin owns the current login, JWT issuance, users, roles, rights, and sessions. 
 - Never log passwords, access/refresh tokens, hashes, signing secrets, or unnecessary user data.
 - Preserve indistinguishable invalid-login responses unless the task explicitly changes the security contract.
 - Account active/locked state and persisted session validity are separate checks; consider both when changing authentication.
-- Rights are modeled but are not currently enforced on protected endpoints. Do not represent authentication-only Admin routes as permission-secured.
+- Admin endpoints enforce named rights through `PermissionPolicyProvider`, `PermissionAuthorizationHandler`, and database permission lookup. Keep session/user eligibility validation before authorization.
 - Refresh tokens are stored as hashes and rotated in the current flow; review replay, revocation, and concurrency impact for any session change.
 
 ## Persistence and verification
 
 - Admin uses the shared `FridayDbContext` and shared migrations; it does not own a separate database context.
 - Repository writes attach/mutate tracked entities and do not normally call `SaveChangesAsync`.
-- No automated Admin/auth test convention exists. For behavior changes, explicitly cover success and negative security paths when tests are part of the task, and never report unrun coverage.
+- Admin has xUnit domain tests and `WebApplicationFactory` API integration tests. Preserve success and negative security coverage; PostgreSQL-specific behavior still requires relational verification.

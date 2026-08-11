@@ -1,5 +1,7 @@
 # Friday Admin Authentication and Authorization Baseline
 
+> Superseded 2026-08-10 for current behavior. See `.codex/state/ADMIN_REVIEW.md`. Permissions, lockout, durable audit, refresh reuse/concurrency protection, role removal/last-admin protection, bounded lists, internal FKs, and unique refresh hashes now exist. The remaining text is retained as historical pre-P0/P1 evidence.
+
 Scope: existing Login, JWT, User, Role, Right/Permission, refresh-session, and protected-endpoint behavior only. Findings were verified against executable source while excluding `bin/`, `obj/`, and unrelated modules.
 
 Status vocabulary: **CONFIRMED**, **PARTIAL**, **NOT_IMPLEMENTED**, **UNKNOWN**.

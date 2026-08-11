@@ -41,6 +41,14 @@ public sealed class EfSecurityAuditWriter(
         );
 
         await dbContext.Set<SecurityAuditEvent>().AddAsync(auditEvent, cancellationToken);
+    }
+
+    public async Task WriteImmediateAsync(
+        SecurityAuditRecord record,
+        CancellationToken cancellationToken = default
+    )
+    {
+        await WriteAsync(record, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 }

@@ -23,6 +23,13 @@
     <Project Path="src/Modules/Sample/Friday.Modules.Sample.Infrastructure/Friday.Modules.Sample.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Friday.API.IntegrationTests/Friday.API.IntegrationTests.csproj" />
     <Project Path="tests/Friday.Modules.Admin.UnitTests/Friday.Modules.Admin.UnitTests.csproj" />
+    <Project Path="tests/Friday.Modules.Customer.UnitTests/Friday.Modules.Customer.UnitTests.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Customer/">
+    <Project Path="src/Modules/Customer/Friday.Modules.Customer.Application/Friday.Modules.Customer.Application.csproj" />
+    <Project Path="src/Modules/Customer/Friday.Modules.Customer.Domain/Friday.Modules.Customer.Domain.csproj" />
+    <Project Path="src/Modules/Customer/Friday.Modules.Customer.Infrastructure/Friday.Modules.Customer.Infrastructure.csproj" />
   </Folder>
 </Solution>

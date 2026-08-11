@@ -39,16 +39,24 @@ services:
     ports:
       - "8080:8080"
     environment:
-      ASPNETCORE_ENVIRONMENT: Docker
+      ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__FridayDb: "Host=postgres;Port=5432;Database=friday;Username=friday;Password=friday"
       ConnectionStrings__AdminDatabase: "Host=postgres;Port=5432;Database=friday;Username=friday;Password=friday"
+      ConnectionStrings__CustomerDb: "Host=postgres;Port=5432;Database=friday;Username=friday;Password=friday"
+      ConnectionStrings__CustomerRetentionDb: ${CUSTOMER_RETENTION_DB:-}
       ConnectionStrings__Redis: "redis:6379"
       Database__Provider: PostgreSql
       Database__ApplyMigrationsOnStartup: "true"
       Cache__UseRedis: "true"
       Cache__RedisConnectionString: "redis:6379"
-      Authentication__Jwt__Secret: "FridayDockerJwtSecret_ChangeMe_Min32Chars!!!!"
+      Authentication__Jwt__Secret: ${AUTHENTICATION_JWT_SECRET}
+      Admin__Bootstrap__InitialPassword: ${ADMIN_BOOTSTRAP_INITIAL_PASSWORD}
+      Customer__AuditRetention__RetentionDays: ${CUSTOMER_AUDIT_RETENTION_DAYS:-365}
+      Customer__AuditRetention__WorkerEnabled: "true"
+      Customer__AuditRetention__DryRun: "true"
+      Customer__AuditRetention__BatchSize: "500"
+      Customer__AuditRetention__IntervalMinutes: "60"
       OpenTelemetry__OtlpEndpoint: "http://jaeger:4317"
     depends_on:
       postgres:

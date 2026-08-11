@@ -1,5 +1,7 @@
 # Friday Project Map
 
+> Admin/Identity delta (2026-08-10): this map predates enforced permissions, lockout, durable security audit, refresh reuse/concurrency protection, bootstrap admin, role removal, pagination, relational integrity, and 11 automated Admin security tests. Use `.codex/state/ADMIN_REVIEW.md` for current Admin status.
+
 Evidence status used throughout: **CONFIRMED**, **PARTIALLY_CONFIRMED**, **NOT_IMPLEMENTED**, **UNKNOWN**.
 
 ## 1. Repository Summary

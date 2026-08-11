@@ -1,4 +1,5 @@
 using Friday.Modules.Admin.Domain.Aggregates.RoleAggregate;
+using Friday.Modules.Admin.Domain.Aggregates.RightAggregate;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -10,5 +11,11 @@ public sealed class RoleRightConfiguration : IEntityTypeConfiguration<RoleRight>
     {
         builder.ToTable("role_rights", "admin");
         builder.HasKey(x => new { x.RoleId, x.RightId });
+
+        builder
+            .HasOne<Right>()
+            .WithMany()
+            .HasForeignKey(x => x.RightId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

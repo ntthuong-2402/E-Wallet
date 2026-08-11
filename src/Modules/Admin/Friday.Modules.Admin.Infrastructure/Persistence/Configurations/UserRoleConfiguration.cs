@@ -1,4 +1,5 @@
 using Friday.Modules.Admin.Domain.Aggregates.UserAggregate;
+using Friday.Modules.Admin.Domain.Aggregates.RoleAggregate;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -10,5 +11,11 @@ public sealed class UserRoleConfiguration : IEntityTypeConfiguration<UserRole>
     {
         builder.ToTable("user_roles", "admin");
         builder.HasKey(x => new { x.UserId, x.RoleId });
+
+        builder
+            .HasOne<Role>()
+            .WithMany()
+            .HasForeignKey(x => x.RoleId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

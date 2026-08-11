@@ -1,5 +1,7 @@
 # Friday API Request Pipeline Pattern
 
+> Admin API delta (2026-08-10): Admin routes now carry per-endpoint named permissions; session/user/password eligibility runs before authorization. User listing supports bounded skip/take and filters while retaining its response-array contract.
+
 Scope: the existing executable API request pipeline. Findings are based only on source under `Friday.API` plus the Admin command/query and persistence behavior needed to trace representative requests. No runtime behavior is asserted where the source delegates formatting to ASP.NET Core.
 
 Status vocabulary: **CONFIRMED**, **PARTIAL**, **NOT_IMPLEMENTED**, **UNKNOWN**.

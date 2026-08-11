@@ -3,6 +3,7 @@ using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using Friday.Modules.Customer.Infrastructure.Observability;
 
 namespace Friday.API.Configuration;
 
@@ -55,7 +56,8 @@ public static class OpenTelemetryServiceCollectionExtensions
         {
             m.AddAspNetCoreInstrumentation()
                 .AddHttpClientInstrumentation()
-                .AddRuntimeInstrumentation();
+                .AddRuntimeInstrumentation()
+                .AddMeter(CustomerTelemetry.MeterName);
 
             if (exportOtlp && otlpUri is not null)
             {

@@ -17,5 +17,15 @@ public interface IUserRepository
     );
     Task<bool> ExistsByEmailAsync(string email, CancellationToken cancellationToken = default);
     Task<bool> ExistsByUserCodeAsync(string userCode, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<User>> ListAsync(CancellationToken cancellationToken = default);
+    Task<UserListPage> ListAsync(
+        int skip,
+        int take,
+        string? search,
+        bool? isActive,
+        bool? isLocked,
+        int? roleId,
+        CancellationToken cancellationToken = default
+    );
 }
+
+public sealed record UserListPage(IReadOnlyList<User> Items, int TotalCount);

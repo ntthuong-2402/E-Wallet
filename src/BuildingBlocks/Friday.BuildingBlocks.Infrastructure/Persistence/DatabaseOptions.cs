@@ -14,4 +14,7 @@ public sealed class DatabaseOptions
     /// <see cref="FridayDbContext"/>, then FluentMigrator data migrations (same connection). Skipped for non-relational providers (e.g. in-memory).
     /// </summary>
     public bool ApplyMigrationsOnStartup { get; set; }
+
+    /// <summary>Database name used only when no relational connection string is configured.</summary>
+    public string InMemoryDatabaseName { get; set; } = "Friday.Shared";
 }

@@ -44,8 +44,23 @@ public sealed class RefreshTokenCommandHandler(
                 consumed.MarkReuseDetected();
                 await sessions.RevokeFamilyAsync(consumed.TokenFamilyId, cancellationToken);
                 await audit.WriteAsync(new("REFRESH_TOKEN_REUSE_DETECTED", "FAILURE", ActorUserId: consumed.UserId, TargetType: "TOKEN_FAMILY", TargetId: consumed.TokenFamilyId.ToString(), ReasonCode: ErrorCodes.Admin.InvalidRefreshToken), cancellationToken);
-                await unitOfWork.CommitAsync(cancellationToken);
             }
+            else
+            {
+                await audit.WriteAsync(
+                    new(
+                        "REFRESH_TOKEN_REJECTED",
+                        "FAILURE",
+                        ActorUserId: consumed?.UserId,
+                        TargetType: "SESSION",
+                        TargetId: consumed?.Id.ToString(),
+                        ReasonCode: ErrorCodes.Admin.InvalidRefreshToken
+                    ),
+                    cancellationToken
+                );
+            }
+
+            await unitOfWork.CommitAsync(cancellationToken);
 
             throw new FridayException(
                 ErrorCodes.Admin.InvalidRefreshToken,
@@ -61,6 +76,18 @@ public sealed class RefreshTokenCommandHandler(
 
         if (user is null || !user.IsActive || user.IsLocked)
         {
+            await audit.WriteAsync(
+                new(
+                    "REFRESH_TOKEN_REJECTED",
+                    "FAILURE",
+                    ActorUserId: session.UserId,
+                    TargetType: "SESSION",
+                    TargetId: session.Id.ToString(),
+                    ReasonCode: ErrorCodes.Admin.SessionInvalid
+                ),
+                cancellationToken
+            );
+            await unitOfWork.CommitAsync(cancellationToken);
             throw new FridayException(
                 ErrorCodes.Admin.SessionInvalid,
                 "Session is no longer valid.",
@@ -84,6 +111,30 @@ public sealed class RefreshTokenCommandHandler(
         await sessions.AddAsync(replacement, cancellationToken);
 
         JwtAccessTokenResult access = jwt.CreateAccessToken(user.Id, replacement.Id, roleCodes);
+
+        try
+        {
+            await audit.WriteAsync(
+                new(
+                    "REFRESH_TOKEN_ROTATED",
+                    "SUCCESS",
+                    ActorUserId: user.Id,
+                    TargetType: "SESSION",
+                    TargetId: replacement.Id.ToString(),
+                    MetadataJson: $"{{\"tokenFamilyId\":\"{replacement.TokenFamilyId}\"}}"
+                ),
+                cancellationToken
+            );
+            await unitOfWork.CommitAsync(cancellationToken);
+        }
+        catch (ConcurrencyConflictException)
+        {
+            throw new FridayException(
+                ErrorCodes.Admin.InvalidRefreshToken,
+                "Refresh token was already consumed.",
+                StatusCodes.Status401Unauthorized
+            );
+        }
 
         return new RefreshTokenResponseDto(
             access.Token,

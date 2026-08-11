@@ -83,12 +83,54 @@ public sealed class UserRepository(FridayDbContext dbContext) : IUserRepository
         return dbContext.Set<User>().AnyAsync(x => x.UserCode == normalized, cancellationToken);
     }
 
-    public async Task<IReadOnlyList<User>> ListAsync(CancellationToken cancellationToken = default)
+    public async Task<UserListPage> ListAsync(
+        int skip,
+        int take,
+        string? search,
+        bool? isActive,
+        bool? isLocked,
+        int? roleId,
+        CancellationToken cancellationToken = default
+    )
     {
-        return await dbContext
+        IQueryable<User> query = dbContext
             .Set<User>()
+            .AsNoTracking();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            string normalized = search.Trim().ToLowerInvariant();
+            query = query.Where(x =>
+                x.UserCode.ToLower().Contains(normalized)
+                || x.Username.ToLower().Contains(normalized)
+                || x.Email.ToLower().Contains(normalized)
+                || x.FullName.ToLower().Contains(normalized)
+            );
+        }
+
+        if (isActive is not null)
+        {
+            query = query.Where(x => x.IsActive == isActive.Value);
+        }
+
+        if (isLocked is not null)
+        {
+            query = query.Where(x => x.IsLocked == isLocked.Value);
+        }
+
+        if (roleId is not null)
+        {
+            query = query.Where(x => x.UserRoles.Any(ur => ur.RoleId == roleId.Value));
+        }
+
+        int totalCount = await query.CountAsync(cancellationToken);
+        List<User> items = await query
             .Include(x => x.UserRoles)
             .OrderBy(x => x.Id)
+            .Skip(skip)
+            .Take(take)
             .ToListAsync(cancellationToken);
+
+        return new UserListPage(items, totalCount);
     }
 }

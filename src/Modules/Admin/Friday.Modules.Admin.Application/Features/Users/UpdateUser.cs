@@ -1,6 +1,7 @@
 using Friday.BuildingBlocks.Application.Errors;
 using Friday.BuildingBlocks.Application.Exceptions;
 using Friday.Modules.Admin.Application.Models;
+using Friday.Modules.Admin.Application.Auditing;
 using Friday.Modules.Admin.Domain.Repositories;
 using LinKit.Core.Cqrs;
 using Microsoft.AspNetCore.Http;
@@ -32,7 +33,7 @@ public sealed record UpdateUserCommand(
     string? Notes
 ) : ICommand<UserDto>;
 
-public sealed class UpdateUserHandler(IUserRepository users)
+public sealed class UpdateUserHandler(IUserRepository users, ISecurityAuditWriter audit)
     : ICommandHandler<UpdateUserCommand, UserDto>
 {
     public async Task<UserDto> HandleAsync(
@@ -96,6 +97,11 @@ public sealed class UpdateUserHandler(IUserRepository users)
             request.CompanyName,
             request.JobTitle,
             request.Notes
+        );
+
+        await audit.WriteAsync(
+            new("USER_UPDATED", "SUCCESS", TargetType: "USER", TargetId: user.Id.ToString()),
+            cancellationToken
         );
 
         return UserDto.FromUser(user);

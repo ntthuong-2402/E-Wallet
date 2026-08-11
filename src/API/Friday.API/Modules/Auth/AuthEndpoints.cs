@@ -68,7 +68,7 @@ public static class AuthEndpoints
                 bool ok = await mediator.SendAsync(command, cancellationToken);
                 return ApiResults.Ok(context, ok);
             }
-        );
+        ).RequireRateLimiting("auth-strict");
 
         group.MapPost(
             "/change-password",

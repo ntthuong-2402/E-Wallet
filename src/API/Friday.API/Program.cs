@@ -1,4 +1,5 @@
 using System.Text;
+using System.Security.Claims;
 using System.Threading.RateLimiting;
 using Friday.API.Common;
 using Friday.API.Configuration;
@@ -6,6 +7,8 @@ using Friday.API.Middlewares;
 using Friday.API.Modules.Admin;
 using Friday.API.Modules.Auth;
 using Friday.API.Modules.Sample;
+using Friday.API.Modules.Customer;
+using Friday.Modules.Customer.Application.Auditing;
 using Friday.BuildingBlocks.Application;
 using Friday.BuildingBlocks.Infrastructure;
 using Friday.BuildingBlocks.Infrastructure.Hosting;
@@ -14,11 +17,15 @@ using Friday.Modules.Admin.Application;
 using Friday.Modules.Admin.Application.Configuration;
 using Friday.Modules.Admin.Infrastructure;
 using Friday.Modules.Admin.Infrastructure.Bootstrap;
+using Friday.Modules.Customer.Application;
+using Friday.Modules.Customer.Infrastructure;
+using Friday.Modules.Customer.Infrastructure.Persistence;
 using Friday.Modules.Sample.Application;
 using Friday.Modules.Sample.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
 using Serilog.Events;
 
@@ -43,12 +50,16 @@ try
     builder.Services.AddLinKitCqrs();
     builder.Services.AddAdminApplication();
     builder.Services.AddAdminInfrastructure(builder.Configuration);
+    builder.Services.AddCustomerApplication();
+    builder.Services.AddCustomerInfrastructure(builder.Configuration);
     builder.Services.AddSampleApplication();
     builder.Services.AddSampleInfrastructure();
 
     builder.Services.AddHttpContextAccessor();
+    builder.Services.AddScoped<ICustomerActor, HttpCustomerActor>();
     builder.Services.AddRateLimiter(options =>
     {
+        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
         options.AddFixedWindowLimiter("auth-strict", limiter =>
         {
             limiter.PermitLimit = 10;
@@ -56,6 +67,34 @@ try
             limiter.QueueLimit = 0;
             limiter.AutoReplenishment = true;
         });
+        options.AddPolicy("customer-read", context =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                context.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                    ?? context.Connection.RemoteIpAddress?.ToString()
+                    ?? "anonymous",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 120,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                }
+            )
+        );
+        options.AddPolicy("customer-write", context =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                context.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                    ?? context.Connection.RemoteIpAddress?.ToString()
+                    ?? "anonymous",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 30,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                }
+            )
+        );
     });
 
     JwtSettings jwtBind =
@@ -94,6 +133,7 @@ try
     Microsoft.Extensions.Logging.ILogger startupLogger = app.Logger;
     startupLogger.LogInformation("Friday.API build complete; running database migrations if enabled.");
     await app.Services.ApplyEfThenDataMigrationsAsync(app.Configuration);
+    await app.Services.ApplyCustomerMigrationsAsync(app.Configuration);
     await using (AsyncServiceScope bootstrapScope = app.Services.CreateAsyncScope())
     {
         await bootstrapScope.ServiceProvider
@@ -145,18 +185,26 @@ try
 
     app.UseHttpsRedirection();
 
-    app.UseRateLimiter();
-
     app.UseAuthentication();
-    app.UseAuthorization();
+    app.UseRateLimiter();
     app.UseMiddleware<AuthenticatedUserValidationMiddleware>();
+    app.UseAuthorization();
 
     app.MapGet(
         "/",
         (HttpContext context) => ApiResults.Ok(context, "Friday modular monolith is running.")
     );
+    app.MapHealthChecks("/health/live", new HealthCheckOptions
+    {
+        Predicate = _ => false,
+    }).AllowAnonymous();
+    app.MapHealthChecks("/health/ready", new HealthCheckOptions
+    {
+        Predicate = registration => registration.Tags.Contains("ready"),
+    }).AllowAnonymous();
     app.MapAuthModule();
     app.MapAdminModule();
+    app.MapCustomerModule();
     app.MapSampleModule();
 
     app.Run();
@@ -164,8 +212,11 @@ try
 catch (Exception ex)
 {
     Log.Fatal(ex, "Server terminated unexpectedly.");
+    throw;
 }
 finally
 {
     Log.CloseAndFlush();
 }
+
+public partial class Program;

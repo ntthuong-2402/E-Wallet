@@ -32,6 +32,17 @@ public sealed class UserSecurityTests
     }
 
     [Fact]
+    public void Assigned_role_can_be_removed()
+    {
+        User user = CreateUser();
+        user.AssignRole(42);
+
+        user.RemoveRole(42);
+
+        Assert.DoesNotContain(user.UserRoles, x => x.RoleId == 42);
+    }
+
+    [Fact]
     public void Refresh_rotation_preserves_family_and_revokes_old_session()
     {
         UserSession original = UserSession.Create(

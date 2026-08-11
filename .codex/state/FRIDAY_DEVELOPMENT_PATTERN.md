@@ -1,5 +1,7 @@
 # Friday Current Development Pattern
 
+> Admin security delta (2026-08-10): durable audit, named permission policies, xUnit unit tests, and `WebApplicationFactory` integration tests now exist. Admin list reads are bounded/no-tracking, and refresh sessions use optimistic concurrency. Older contrary inventory statements below are historical.
+
 Scope: a consolidated description of development conventions already confirmed in `PROJECT_MAP.md`, `ADMIN_BASELINE.md`, `MODULE_PATTERN.md`, `PERSISTENCE_PATTERN.md`, `API_PATTERN.md`, `CONFIGURATION_PATTERN.md`, and `TEST_PATTERN.md`. Admin is the primary reference because it is the only fully persisted feature module.
 
 This document describes the current repository mechanism. It does not approve the mechanism, introduce a future architecture, or make new architecture decisions.

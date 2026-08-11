@@ -143,6 +143,8 @@ namespace Friday.BuildingBlocks.Infrastructure.Migrations
 
                     b.HasKey("RoleId", "RightId");
 
+                    b.HasIndex("RightId");
+
                     b.ToTable("role_rights", "admin");
                 });
 
@@ -257,6 +259,8 @@ namespace Friday.BuildingBlocks.Infrastructure.Migrations
 
                     b.HasKey("UserId", "RoleId");
 
+                    b.HasIndex("RoleId");
+
                     b.ToTable("user_roles", "admin");
                 });
 
@@ -308,7 +312,8 @@ namespace Friday.BuildingBlocks.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("RefreshTokenHash");
+                    b.HasIndex("RefreshTokenHash")
+                        .IsUnique();
 
                     b.HasIndex("TokenFamilyId");
 
@@ -386,6 +391,12 @@ namespace Friday.BuildingBlocks.Infrastructure.Migrations
                         .HasForeignKey("RoleId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("Friday.Modules.Admin.Domain.Aggregates.RightAggregate.Right", null)
+                        .WithMany()
+                        .HasForeignKey("RightId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Friday.Modules.Admin.Domain.Aggregates.UserAggregate.UserPassword", b =>
@@ -401,6 +412,12 @@ namespace Friday.BuildingBlocks.Infrastructure.Migrations
 
             modelBuilder.Entity("Friday.Modules.Admin.Domain.Aggregates.UserAggregate.UserRole", b =>
                 {
+                    b.HasOne("Friday.Modules.Admin.Domain.Aggregates.RoleAggregate.Role", null)
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Friday.Modules.Admin.Domain.Aggregates.UserAggregate.User", null)
                         .WithMany("UserRoles")
                         .HasForeignKey("UserId")

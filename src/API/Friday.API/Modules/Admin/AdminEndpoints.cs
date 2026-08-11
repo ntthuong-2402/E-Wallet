@@ -34,13 +34,33 @@ public static class AdminEndpoints
 
         group.MapGet(
             "/users",
-            async (HttpContext context, IMediator mediator, CancellationToken cancellationToken) =>
+            async (
+                HttpContext context,
+                int? skip,
+                int? take,
+                string? search,
+                bool? isActive,
+                bool? isLocked,
+                int? roleId,
+                IMediator mediator,
+                CancellationToken cancellationToken
+            ) =>
             {
-                IReadOnlyList<UserDto> response = await mediator.QueryAsync(
-                    new GetUsersQuery(),
+                UserListPageDto response = await mediator.QueryAsync(
+                    new GetUsersQuery(
+                        skip ?? 0,
+                        take ?? 50,
+                        search,
+                        isActive,
+                        isLocked,
+                        roleId
+                    ),
                     cancellationToken
                 );
-                return ApiResults.Ok(context, response);
+                context.Response.Headers["X-Total-Count"] = response.TotalCount.ToString();
+                context.Response.Headers["X-Skip"] = response.Skip.ToString();
+                context.Response.Headers["X-Take"] = response.Take.ToString();
+                return ApiResults.Ok(context, response.Items);
             }
         ).RequireAuthorization(AdminPermissions.UsersRead);
 
@@ -123,6 +143,24 @@ public static class AdminEndpoints
                 return ApiResults.Ok(context, response);
             }
         ).RequireAuthorization(AdminPermissions.UsersAssignRole);
+
+        group.MapDelete(
+            "/users/{userId:int}/roles/{roleId:int}",
+            async (
+                HttpContext context,
+                int userId,
+                int roleId,
+                IMediator mediator,
+                CancellationToken cancellationToken
+            ) =>
+            {
+                UserDto response = await mediator.SendAsync(
+                    new RemoveRoleFromUserCommand(userId, roleId),
+                    cancellationToken
+                );
+                return ApiResults.Ok(context, response);
+            }
+        ).RequireAuthorization(AdminPermissions.UsersRemoveRole);
 
         group.MapPost(
             "/users/{userId:int}/lock",
@@ -252,10 +290,31 @@ public static class AdminEndpoints
 
         group.MapGet(
             "/audit-events",
-            async (HttpContext context, int? skip, int? take, IMediator mediator, CancellationToken cancellationToken) =>
+            async (
+                HttpContext context,
+                int? skip,
+                int? take,
+                string? eventType,
+                int? actorUserId,
+                string? targetType,
+                string? targetId,
+                DateTime? fromUtc,
+                DateTime? toUtc,
+                IMediator mediator,
+                CancellationToken cancellationToken
+            ) =>
             {
                 IReadOnlyList<SecurityAuditEventDto> response = await mediator.QueryAsync(
-                    new GetSecurityAuditEventsQuery(skip ?? 0, take ?? 50),
+                    new GetSecurityAuditEventsQuery(
+                        skip ?? 0,
+                        take ?? 50,
+                        eventType,
+                        actorUserId,
+                        targetType,
+                        targetId,
+                        fromUtc,
+                        toUtc
+                    ),
                     cancellationToken
                 );
                 return ApiResults.Ok(context, response);

@@ -1,4 +1,5 @@
 using Friday.BuildingBlocks.Application.Abstractions;
+using Friday.BuildingBlocks.Application.Exceptions;
 using Friday.BuildingBlocks.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -29,7 +30,17 @@ public sealed class EfUnitOfWork(
 
     public async Task CommitAsync(CancellationToken cancellationToken = default)
     {
-        await dbContext.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new ConcurrencyConflictException(
+                "The persisted state changed during this operation.",
+                ex
+            );
+        }
 
         List<Entity> domainEntities = dbContext
             .ChangeTracker.Entries<Entity>()

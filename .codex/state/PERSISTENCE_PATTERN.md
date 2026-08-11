@@ -1,5 +1,7 @@
 # Friday Admin Persistence Pattern
 
+> Admin P1 delta (2026-08-10): `UserSession.Version` is an optimistic concurrency token; refresh hashes have a unique index; `user_roles.RoleId` and `role_rights.RightId` have restrictive FKs; Admin user reads use bounded no-tracking pagination/filtering. Older contrary statements below are historical.
+
 Scope: persistence architecture currently used by the Admin module. This documents existing source behavior only; it is not a proposed database design. Generated `bin/`/`obj` content and unrelated functionality were excluded.
 
 Status vocabulary: **CONFIRMED**, **PARTIAL**, **NOT_IMPLEMENTED**, **UNKNOWN**.

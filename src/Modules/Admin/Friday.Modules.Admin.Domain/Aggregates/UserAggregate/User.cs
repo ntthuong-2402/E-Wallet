@@ -190,6 +190,19 @@ public sealed class User : AggregateRoot
         Raise(new UserRoleAssignedDomainEvent(Id, roleId));
     }
 
+    public void RemoveRole(int roleId)
+    {
+        UserRole? userRole = _userRoles.FirstOrDefault(x => x.RoleId == roleId);
+        if (userRole is null)
+        {
+            return;
+        }
+
+        _userRoles.Remove(userRole);
+        Touch();
+        Raise(new UserRoleRemovedDomainEvent(Id, roleId));
+    }
+
     public void Lock()
     {
         if (IsLocked)
