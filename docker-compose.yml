@@ -44,6 +44,8 @@ services:
       ConnectionStrings__FridayDb: "Host=postgres;Port=5432;Database=friday;Username=friday;Password=friday"
       ConnectionStrings__AdminDatabase: "Host=postgres;Port=5432;Database=friday;Username=friday;Password=friday"
       ConnectionStrings__CustomerDb: "Host=postgres;Port=5432;Database=friday;Username=friday;Password=friday"
+      ConnectionStrings__PaymentLedgerDb: "Host=postgres;Port=5432;Database=friday;Username=friday;Password=friday"
+      #ConnectionStrings__PaymentLedgerMigrationDb: ${PAYMENT_LEDGER_MIGRATION_DB:?Set PAYMENT_LEDGER_MIGRATION_DB in .env}
       ConnectionStrings__CustomerRetentionDb: ${CUSTOMER_RETENTION_DB:-}
       ConnectionStrings__Redis: "redis:6379"
       Database__Provider: PostgreSql

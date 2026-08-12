@@ -52,6 +52,19 @@ internal sealed class CustomerUnitOfWork(
                     409
                 );
             }
+            if (constraint.Contains("RefId", StringComparison.Ordinal))
+                throw new FridayException(
+                    CustomerErrorCodes.RefIdConflict,
+                    "RefId already exists.",
+                    409
+                );
+            if (constraint.Contains("AccountId", StringComparison.Ordinal)
+                || constraint.Contains("CustomerId", StringComparison.Ordinal))
+                throw new FridayException(
+                    CustomerErrorCodes.AccountAlreadyLinked,
+                    "Customer or account already has an active linkage.",
+                    409
+                );
             throw;
         }
         catch (DbUpdateException)

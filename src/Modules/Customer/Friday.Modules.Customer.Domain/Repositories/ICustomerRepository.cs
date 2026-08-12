@@ -17,3 +17,23 @@ public interface ICustomerRepository
     );
     Task AddAsync(CustomerAggregate customer, CancellationToken cancellationToken = default);
 }
+
+public interface ICustomerCreateReferenceRepository
+{
+    Task AcquireAsync(string refId, CancellationToken cancellationToken = default);
+    Task<CustomerCreateReference?> GetAsync(string refId, CancellationToken cancellationToken = default);
+    Task AddAsync(CustomerCreateReference reference, CancellationToken cancellationToken = default);
+}
+
+public interface ICustomerAccountLinkageRepository
+{
+    Task<CustomerAccountLinkage?> GetActiveByCustomerIdAsync(
+        int customerId,
+        CancellationToken cancellationToken = default
+    );
+    Task<CustomerAccountLinkage?> GetActiveByAccountIdAsync(
+        string accountId,
+        CancellationToken cancellationToken = default
+    );
+    Task AddAsync(CustomerAccountLinkage linkage, CancellationToken cancellationToken = default);
+}

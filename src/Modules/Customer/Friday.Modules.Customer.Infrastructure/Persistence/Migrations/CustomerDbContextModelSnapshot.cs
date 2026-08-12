@@ -178,7 +178,138 @@ namespace Friday.Modules.Customer.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Friday.Modules.Customer.Domain.Customers.CustomerAccountLinkage", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("LinkReason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("LinkedByActorUserId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime>("LinkedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UnlinkReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("UnlinkedByActorUserId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime?>("UnlinkedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId")
+                        .IsUnique()
+                        .HasFilter("\"UnlinkedOnUtc\" IS NULL");
+
+                    b.HasIndex("CustomerId")
+                        .IsUnique()
+                        .HasFilter("\"UnlinkedOnUtc\" IS NULL");
+
+                    b.ToTable("customer_account_linkages", "customer", t =>
+                        {
+                            t.HasCheckConstraint("CK_customer_account_linkages_account_id", "char_length(\"AccountId\") BETWEEN 1 AND 128 AND btrim(\"AccountId\") = \"AccountId\"");
+
+                            t.HasCheckConstraint("CK_customer_account_linkages_link_reason", "char_length(btrim(\"LinkReason\")) BETWEEN 1 AND 500");
+
+                            t.HasCheckConstraint("CK_customer_account_linkages_unlink_state", "(\"UnlinkedOnUtc\" IS NULL AND \"UnlinkedByActorUserId\" IS NULL AND \"UnlinkReason\" IS NULL) OR (\"UnlinkedOnUtc\" IS NOT NULL AND \"UnlinkedOnUtc\" >= \"LinkedOnUtc\" AND char_length(btrim(\"UnlinkedByActorUserId\")) BETWEEN 1 AND 128 AND char_length(btrim(\"UnlinkReason\")) BETWEEN 1 AND 500)");
+                        });
+                });
+
+            modelBuilder.Entity("Friday.Modules.Customer.Domain.Customers.CustomerCreateReference", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("ActorUserId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime>("CreatedOnUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RefId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character(64)")
+                        .IsFixedLength();
+
+                    b.Property<string>("ResponseJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("RefId")
+                        .IsUnique();
+
+                    b.ToTable("customer_create_references", "customer", t =>
+                        {
+                            t.HasCheckConstraint("CK_customer_create_references_ref_id", "\"RefId\" ~ '^[A-Za-z0-9._:-]{1,100}$'");
+
+                            t.HasCheckConstraint("CK_customer_create_references_request_hash", "\"RequestHash\" ~ '^[A-F0-9]{64}$'");
+                        });
+                });
+
             modelBuilder.Entity("Friday.Modules.Customer.Domain.Auditing.CustomerChangeAudit", b =>
+                {
+                    b.HasOne("Friday.Modules.Customer.Domain.Customers.Customer", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Customer");
+                });
+
+            modelBuilder.Entity("Friday.Modules.Customer.Domain.Customers.CustomerAccountLinkage", b =>
+                {
+                    b.HasOne("Friday.Modules.Customer.Domain.Customers.Customer", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Customer");
+                });
+
+            modelBuilder.Entity("Friday.Modules.Customer.Domain.Customers.CustomerCreateReference", b =>
                 {
                     b.HasOne("Friday.Modules.Customer.Domain.Customers.Customer", "Customer")
                         .WithMany()

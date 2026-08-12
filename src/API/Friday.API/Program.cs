@@ -8,7 +8,9 @@ using Friday.API.Modules.Admin;
 using Friday.API.Modules.Auth;
 using Friday.API.Modules.Sample;
 using Friday.API.Modules.Customer;
+using Friday.API.Modules.PaymentLedger;
 using Friday.Modules.Customer.Application.Auditing;
+using Friday.Modules.Customer.Application.Customers;
 using Friday.BuildingBlocks.Application;
 using Friday.BuildingBlocks.Infrastructure;
 using Friday.BuildingBlocks.Infrastructure.Hosting;
@@ -20,6 +22,10 @@ using Friday.Modules.Admin.Infrastructure.Bootstrap;
 using Friday.Modules.Customer.Application;
 using Friday.Modules.Customer.Infrastructure;
 using Friday.Modules.Customer.Infrastructure.Persistence;
+using Friday.Modules.PaymentLedger.Application;
+using Friday.Modules.PaymentLedger.Application.Actors;
+using Friday.Modules.PaymentLedger.Infrastructure;
+using Friday.Modules.PaymentLedger.Infrastructure.Persistence;
 using Friday.Modules.Sample.Application;
 using Friday.Modules.Sample.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -52,11 +58,15 @@ try
     builder.Services.AddAdminInfrastructure(builder.Configuration);
     builder.Services.AddCustomerApplication();
     builder.Services.AddCustomerInfrastructure(builder.Configuration);
+    builder.Services.AddPaymentLedgerApplication();
+    builder.Services.AddPaymentLedgerInfrastructure(builder.Configuration);
     builder.Services.AddSampleApplication();
     builder.Services.AddSampleInfrastructure();
 
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<ICustomerActor, HttpCustomerActor>();
+    builder.Services.AddScoped<IExternalAccountDirectory, AdminExternalAccountDirectory>();
+    builder.Services.AddScoped<IPaymentLedgerActor, HttpPaymentLedgerActor>();
     builder.Services.AddRateLimiter(options =>
     {
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -82,6 +92,34 @@ try
             )
         );
         options.AddPolicy("customer-write", context =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                context.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                    ?? context.Connection.RemoteIpAddress?.ToString()
+                    ?? "anonymous",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 30,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                }
+            )
+        );
+        options.AddPolicy("transaction-read", context =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                context.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                    ?? context.Connection.RemoteIpAddress?.ToString()
+                    ?? "anonymous",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 120,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                }
+            )
+        );
+        options.AddPolicy("transaction-write", context =>
             RateLimitPartition.GetFixedWindowLimiter(
                 context.User.FindFirstValue(ClaimTypes.NameIdentifier)
                     ?? context.Connection.RemoteIpAddress?.ToString()
@@ -134,6 +172,7 @@ try
     startupLogger.LogInformation("Friday.API build complete; running database migrations if enabled.");
     await app.Services.ApplyEfThenDataMigrationsAsync(app.Configuration);
     await app.Services.ApplyCustomerMigrationsAsync(app.Configuration);
+    await app.Services.ApplyPaymentLedgerMigrationsAsync(app.Configuration);
     await using (AsyncServiceScope bootstrapScope = app.Services.CreateAsyncScope())
     {
         await bootstrapScope.ServiceProvider
@@ -205,6 +244,7 @@ try
     app.MapAuthModule();
     app.MapAdminModule();
     app.MapCustomerModule();
+    app.MapPaymentLedgerModule();
     app.MapSampleModule();
 
     app.Run();

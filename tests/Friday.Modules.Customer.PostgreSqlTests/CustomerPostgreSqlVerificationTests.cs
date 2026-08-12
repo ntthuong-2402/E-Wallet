@@ -10,6 +10,7 @@ using Friday.BuildingBlocks.Application.Behaviors;
 using Friday.BuildingBlocks.Domain.Entities;
 using Friday.Modules.Customer.Application.Persistence;
 using Friday.Modules.Customer.Infrastructure;
+using Friday.Modules.Customer.Infrastructure.Repositories;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -50,6 +51,7 @@ public sealed class CustomerPostgreSqlVerificationTests
 
             await VerifyCleanMigrationAsync(databaseConnection);
             await VerifyUniqueDocumentsAsync(options);
+            await VerifyRefIdAndAccountLinkageAsync(options);
             await VerifyConcurrentDuplicateRaceAsync(options);
             await VerifyOptimisticConcurrencyAsync(options);
             await VerifyAuditFailureRollsBackMutationAsync(options);
@@ -89,15 +91,118 @@ public sealed class CustomerPostgreSqlVerificationTests
             SELECT
               (SELECT count(*) FROM customer."__EFMigrationsHistory"),
               to_regclass('customer.customers') IS NOT NULL,
-              to_regclass('customer.customer_change_audits') IS NOT NULL;
+              to_regclass('customer.customer_change_audits') IS NOT NULL,
+              to_regclass('customer.customer_create_references') IS NOT NULL,
+              to_regclass('customer.customer_account_linkages') IS NOT NULL;
             """,
             connection
         );
         await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
         Assert.True(await reader.ReadAsync());
-        Assert.Equal(1L, reader.GetInt64(0));
+        Assert.Equal(2L, reader.GetInt64(0));
         Assert.True(reader.GetBoolean(1));
         Assert.True(reader.GetBoolean(2));
+        Assert.True(reader.GetBoolean(3));
+        Assert.True(reader.GetBoolean(4));
+    }
+
+    private static async Task VerifyRefIdAndAccountLinkageAsync(
+        DbContextOptions<CustomerDbContext> options
+    )
+    {
+        int firstCustomerId = await InsertCustomerAsync(
+            options,
+            "CUS_REF_LINKAGE_001",
+            CitizenDocument.Create(CitizenDocumentType.Passport, "NZ", "REFLINK001")
+        );
+        int secondCustomerId = await InsertCustomerAsync(
+            options,
+            "CUS_REF_LINKAGE_002",
+            CitizenDocument.Create(CitizenDocumentType.Passport, "NZ", "REFLINK002")
+        );
+
+        await using (CustomerDbContext first = new(options))
+        await using (Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction =
+            await first.Database.BeginTransactionAsync())
+        {
+            CustomerAggregate customer = await first.Customers.SingleAsync(x => x.Id == firstCustomerId);
+            CustomerCreateReferenceRepository repository = new(first);
+            await repository.AcquireAsync("partner:ref:001");
+            await repository.AddAsync(CustomerCreateReference.Create(
+                "partner:ref:001",
+                new string('A', 64),
+                "operator-1",
+                customer,
+                "{\"id\":1}",
+                DateTime.UtcNow
+            ));
+            await first.SaveChangesAsync();
+
+            using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+            Task<CustomerCreateReference?> replay = ReadAfterRefLockAsync(
+                options,
+                "partner:ref:001",
+                timeout.Token
+            );
+            await Task.Delay(100, timeout.Token);
+            Assert.False(replay.IsCompleted);
+            await transaction.CommitAsync(timeout.Token);
+            Assert.NotNull(await replay);
+        }
+
+        await using (CustomerDbContext linkageContext = new(options))
+        {
+            CustomerAggregate firstCustomer = await linkageContext.Customers
+                .SingleAsync(x => x.Id == firstCustomerId);
+            linkageContext.CustomerAccountLinkages.Add(CustomerAccountLinkage.Link(
+                firstCustomer,
+                "account-unique-001",
+                "operator-1",
+                "onboarding",
+                DateTime.UtcNow
+            ));
+            await linkageContext.SaveChangesAsync();
+        }
+
+        await using (CustomerDbContext duplicate = new(options))
+        {
+            CustomerAggregate secondCustomer = await duplicate.Customers
+                .SingleAsync(x => x.Id == secondCustomerId);
+            duplicate.CustomerAccountLinkages.Add(CustomerAccountLinkage.Link(
+                secondCustomer,
+                "account-unique-001",
+                "operator-1",
+                "duplicate",
+                DateTime.UtcNow
+            ));
+            await Assert.ThrowsAsync<DbUpdateException>(() => duplicate.SaveChangesAsync());
+        }
+
+        await using CustomerDbContext invalid = new(options);
+        await Assert.ThrowsAsync<PostgresException>(() => invalid.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO customer.customer_create_references
+            ("RefId", "RequestHash", "ActorUserId", "CustomerId", "ResponseJson", "CreatedOnUtc")
+            VALUES ('invalid ref id', repeat('A', 64), 'operator-1', {0}, '{}', now())
+            """,
+            firstCustomerId
+        ));
+    }
+
+    private static async Task<CustomerCreateReference?> ReadAfterRefLockAsync(
+        DbContextOptions<CustomerDbContext> options,
+        string refId,
+        CancellationToken cancellationToken
+    )
+    {
+        await using CustomerDbContext context = new(options);
+        await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction =
+            await context.Database.BeginTransactionAsync(cancellationToken);
+        CustomerCreateReferenceRepository repository = new(context);
+        await repository.AcquireAsync(refId, cancellationToken);
+        CustomerCreateReference? reference = await repository.GetAsync(refId, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return reference;
     }
 
     private static async Task VerifyUniqueDocumentsAsync(DbContextOptions<CustomerDbContext> options)
@@ -494,6 +599,8 @@ public sealed class CustomerPostgreSqlVerificationTests
                 GRANT USAGE ON SCHEMA customer TO "{runtimeRole}", "{retentionRole}";
                 GRANT SELECT, INSERT, UPDATE ON customer.customers TO "{runtimeRole}";
                 GRANT SELECT, INSERT ON customer.customer_change_audits TO "{runtimeRole}";
+                GRANT SELECT, INSERT ON customer.customer_create_references TO "{runtimeRole}";
+                GRANT SELECT, INSERT, UPDATE ON customer.customer_account_linkages TO "{runtimeRole}";
                 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA customer TO "{runtimeRole}";
                 GRANT SELECT ON customer."__EFMigrationsHistory" TO "{runtimeRole}";
                 GRANT EXECUTE ON FUNCTION customer.purge_expired_customer_audits(integer)

@@ -1,8 +1,10 @@
 # ADR-0001 - Customer bounded context and persistence ownership
 
-> Amendment: the earlier AES/HMAC proposal was superseded before deployment.
+> Amendments: the earlier AES/HMAC proposal was superseded before deployment.
 > Phase 4 stores normalized document numbers as plaintext while restricting DB
 > access and keeping raw PII out of APIs, logs, traces, and audit payloads.
+> Customer create now requires a durable `refId`, and the approved account
+> linkage is an external login-account reference without a cross-context FK.
 
 Status: Accepted
 Date: 2026-08-11
@@ -37,9 +39,14 @@ context owns the other context's entities.
 8. Cross-context workflows use explicit contracts. When durable messaging is
    introduced, publication uses outbox/inbox rather than distributed
    transactions.
-9. Create Customer API idempotency is outside the current phase. Database
-   uniqueness and bounded collision retry for the generated `CustomerCode`
-   remain required correctness controls.
+9. Create Customer requires a globally unique, case-sensitive `refId` persisted
+   with the actor, normalized request hash, and original response snapshot.
+   Same-reference concurrent requests are serialized in PostgreSQL; reuse by
+   another actor or with another payload is rejected.
+10. Customer may hold one active linkage to an external Identity/Admin login
+    account, and an account may link to one active Customer. Link/unlink are
+    dedicated permission-protected, audited operations; no cross-context FK is
+    created.
 
 ## Planned project boundary
 

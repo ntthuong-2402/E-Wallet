@@ -63,6 +63,7 @@ public sealed class CustomerApiIntegrationTests
         await using CustomerApiFactory factory = new();
         using HttpClient anonymous = factory.CreateClient();
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/customers/1")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/customers/me")).StatusCode);
 
         using HttpClient ordinary = factory.CreateClient();
         HttpResponseMessage registered = await ordinary.PostAsJsonAsync("/api/auth/register", new
@@ -80,6 +81,7 @@ public sealed class CustomerApiIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, (await ordinary.GetAsync("/api/customers/1")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await ordinary.PostAsJsonAsync("/api/customers", new
         {
+            refId = $"forbidden-{Guid.NewGuid():N}",
             fullName = "Forbidden Customer",
             dateOfBirth = (string?)null,
             documentType = 1,
@@ -102,11 +104,25 @@ public sealed class CustomerApiIntegrationTests
             reason = "forbidden",
         })).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await ordinary.GetAsync("/api/customers/1/audit")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.Forbidden,
+            (await ordinary.GetAsync("/api/customers/1/account-linkage")).StatusCode
+        );
+        Assert.Equal(HttpStatusCode.Forbidden, (await ordinary.PostAsJsonAsync(
+            "/api/customers/1/account-linkage",
+            new { expectedVersion = 0, accountId = "1", reason = "forbidden" }
+        )).StatusCode);
+        using HttpRequestMessage forbiddenUnlink = new(HttpMethod.Delete, "/api/customers/1/account-linkage")
+        {
+            Content = JsonContent.Create(new { expectedVersion = 0, reason = "forbidden" }),
+        };
+        Assert.Equal(HttpStatusCode.Forbidden, (await ordinary.SendAsync(forbiddenUnlink)).StatusCode);
 
         using HttpClient admin = factory.CreateClient();
         await AuthenticateAdminAsync(admin, factory);
         HttpResponseMessage created = await admin.PostAsJsonAsync("/api/customers", new
         {
+            refId = $"create-{Guid.NewGuid():N}",
             fullName = "Nguyen Van Customer",
             dateOfBirth = "1990-01-02",
             documentType = 1,
@@ -131,6 +147,7 @@ public sealed class CustomerApiIntegrationTests
 
         HttpResponseMessage duplicate = await admin.PostAsJsonAsync("/api/customers", new
         {
+            refId = $"duplicate-{Guid.NewGuid():N}",
             fullName = "Duplicate Document",
             dateOfBirth = (string?)null,
             documentType = 1,
@@ -204,13 +221,130 @@ public sealed class CustomerApiIntegrationTests
             .Select(x => x.Code)
             .OrderBy(x => x)
             .ToArrayAsync();
-        Assert.Equal(6, codes.Length);
+        Assert.Equal(8, codes.Length);
+    }
+
+    [Fact]
+    public async Task Customer_create_replays_same_refId_and_rejects_changed_payload()
+    {
+        await using CustomerApiFactory factory = new();
+        using HttpClient admin = factory.CreateClient();
+        await AuthenticateAdminAsync(admin, factory);
+        string refId = $"partner:create:{Guid.NewGuid():N}";
+        object request = new
+        {
+            refId,
+            fullName = "RefId Customer",
+            dateOfBirth = (string?)null,
+            documentType = 2,
+            issuingCountryCode = "SG",
+            citizenDocumentNumber = "REF123456",
+        };
+
+        HttpResponseMessage first = await admin.PostAsJsonAsync("/api/customers", request);
+        HttpResponseMessage replay = await admin.PostAsJsonAsync("/api/customers", request);
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, replay.StatusCode);
+        int customerId = await ReadDataInt32Async(first, "id");
+        Assert.Equal(customerId, await ReadDataInt32Async(replay, "id"));
+
+        HttpResponseMessage audit = await admin.GetAsync(
+            $"/api/customers/{customerId}/audit?skip=0&take=10"
+        );
+        await using (Stream auditStream = await audit.Content.ReadAsStreamAsync())
+        using (JsonDocument auditBody = await JsonDocument.ParseAsync(auditStream))
+            Assert.Equal(1, auditBody.RootElement.GetProperty("data").GetArrayLength());
+
+        HttpResponseMessage changed = await admin.PostAsJsonAsync("/api/customers", new
+        {
+            refId,
+            fullName = "Changed RefId Customer",
+            dateOfBirth = (string?)null,
+            documentType = 2,
+            issuingCountryCode = "SG",
+            citizenDocumentNumber = "REF123456",
+        });
+        Assert.Equal(HttpStatusCode.Conflict, changed.StatusCode);
+        Assert.Equal("CUSTOMER_REF_ID_CONFLICT", await ReadCodeAsync(changed));
+    }
+
+    [Fact]
+    public async Task Customer_account_linkage_supports_me_lookup_and_audited_unlink()
+    {
+        await using CustomerApiFactory factory = new();
+        using HttpClient admin = factory.CreateClient();
+        await AuthenticateAdminAsync(admin, factory);
+        (int customerId, long version) = await CreateCustomerAsync(admin);
+
+        using HttpClient customerAccount = factory.CreateClient();
+        HttpResponseMessage registered = await customerAccount.PostAsJsonAsync("/api/auth/register", new
+        {
+            username = $"linked-{Guid.NewGuid():N}",
+            email = $"linked-{Guid.NewGuid():N}@example.com",
+            password = "LinkedAccount@123456",
+            fullName = "Linked Account",
+            phone = (string?)null,
+        });
+        Assert.Equal(HttpStatusCode.OK, registered.StatusCode);
+        string registeredJson = await registered.Content.ReadAsStringAsync();
+        using JsonDocument registeredBody = JsonDocument.Parse(registeredJson);
+        JsonElement registeredData = registeredBody.RootElement.GetProperty("data");
+        int accountId = registeredData.GetProperty("user").GetProperty("id").GetInt32();
+        customerAccount.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer", registeredData.GetProperty("accessToken").GetString()!
+        );
+
+        HttpResponseMessage missingAccount = await admin.PostAsJsonAsync(
+            $"/api/customers/{customerId}/account-linkage",
+            new { expectedVersion = version, accountId = "999999", reason = "invalid account" }
+        );
+        Assert.Equal(HttpStatusCode.NotFound, missingAccount.StatusCode);
+        Assert.Equal("CUSTOMER_ACCOUNT_NOT_FOUND", await ReadCodeAsync(missingAccount));
+
+        HttpResponseMessage linked = await admin.PostAsJsonAsync(
+            $"/api/customers/{customerId}/account-linkage",
+            new { expectedVersion = version, accountId = accountId.ToString(), reason = "onboarding" }
+        );
+        Assert.Equal(HttpStatusCode.OK, linked.StatusCode);
+        Assert.True(await ReadDataInt64Async(linked, "linkageId") > 0);
+
+        HttpResponseMessage linkage = await admin.GetAsync(
+            $"/api/customers/{customerId}/account-linkage"
+        );
+        Assert.Equal(HttpStatusCode.OK, linkage.StatusCode);
+        string linkageJson = await linkage.Content.ReadAsStringAsync();
+        using JsonDocument linkageBody = JsonDocument.Parse(linkageJson);
+        JsonElement linkageData = linkageBody.RootElement.GetProperty("data");
+        Assert.Equal(accountId.ToString(), linkageData.GetProperty("accountId").GetString());
+        Assert.Equal(version + 1, linkageData.GetProperty("customerVersion").GetInt64());
+
+        HttpResponseMessage mine = await customerAccount.GetAsync("/api/customers/me");
+        Assert.Equal(HttpStatusCode.OK, mine.StatusCode);
+        Assert.Equal(customerId, await ReadDataInt32Async(mine, "id"));
+
+        using HttpRequestMessage unlinkRequest = new(
+            HttpMethod.Delete,
+            $"/api/customers/{customerId}/account-linkage"
+        )
+        { Content = JsonContent.Create(new { expectedVersion = version + 1, reason = "account closed" }) };
+        HttpResponseMessage unlinked = await admin.SendAsync(unlinkRequest);
+        Assert.Equal(HttpStatusCode.OK, unlinked.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await customerAccount.GetAsync("/api/customers/me")).StatusCode);
+
+        HttpResponseMessage audit = await admin.GetAsync(
+            $"/api/customers/{customerId}/audit?skip=0&take=10"
+        );
+        string auditJson = await audit.Content.ReadAsStringAsync();
+        Assert.Contains("CUSTOMER_ACCOUNT_LINKED", auditJson, StringComparison.Ordinal);
+        Assert.Contains("CUSTOMER_ACCOUNT_UNLINKED", auditJson, StringComparison.Ordinal);
+        Assert.DoesNotContain($"\\\"AccountId\\\":\\\"{accountId}\\\"", auditJson, StringComparison.Ordinal);
     }
 
     private static async Task<(int Id, long Version)> CreateCustomerAsync(HttpClient client)
     {
         HttpResponseMessage response = await client.PostAsJsonAsync("/api/customers", new
         {
+            refId = $"test-{Guid.NewGuid():N}",
             fullName = "Test Customer",
             dateOfBirth = (string?)null,
             documentType = 1,
@@ -259,6 +393,20 @@ public sealed class CustomerApiIntegrationTests
         await using Stream stream = await response.Content.ReadAsStreamAsync();
         using JsonDocument body = await JsonDocument.ParseAsync(stream);
         return body.RootElement.GetProperty("data").GetProperty(property).GetInt64();
+    }
+
+    private static async Task<int> ReadDataInt32Async(HttpResponseMessage response, string property)
+    {
+        await using Stream stream = await response.Content.ReadAsStreamAsync();
+        using JsonDocument body = await JsonDocument.ParseAsync(stream);
+        return body.RootElement.GetProperty("data").GetProperty(property).GetInt32();
+    }
+
+    private static async Task<string> ReadCodeAsync(HttpResponseMessage response)
+    {
+        await using Stream stream = await response.Content.ReadAsStreamAsync();
+        using JsonDocument body = await JsonDocument.ParseAsync(stream);
+        return body.RootElement.GetProperty("code").GetString()!;
     }
 
     private sealed class CustomerApiFactory : WebApplicationFactory<Program>

@@ -3,6 +3,9 @@
 > Historical design record. The AES/HMAC decision was superseded by the
 > approved Phase 4 plaintext-at-rest decision. See
 > `CUSTOMER_PHASE4_IMPLEMENTATION.md` for current behavior.
+> The original idempotency and Identity-linkage deferrals were also superseded:
+> create now requires `refId`, and account linkage supports one active external
+> login account per Customer.
 
 Status: Approved; Phase 2 policy gates resolved
 Date: 2026-08-11
@@ -194,21 +197,21 @@ Accepted `CUST-PENDING-004` implementation policy:
 The Phase 2 schema enforces requiredness and uniqueness without storing the
 canonical document number in plaintext.
 
-## 10. Future Identity linkage
+## 10. Account linkage amendment
 
-The future link is Accepted in principle:
+The login-account link is now Accepted and implemented:
 
 - Identity owns credentials and sessions;
 - Customer stores only an external identity identifier;
 - no database foreign key crosses contexts;
 - link/unlink is a dedicated authorized and audited use case;
 - generic Customer update cannot modify the link;
-- no unused identity column is added before a concrete flow is approved;
+- one Customer and one login account may each have at most one active linkage;
+- `CUSTOMERS_ACCOUNT_LINKAGE_READ` and `CUSTOMERS_ACCOUNT_LINKAGE_MANAGE`
+  protect the operator APIs;
+- `/api/customers/me` resolves the Customer from the authenticated JWT subject;
 - future service synchronization uses explicit contracts and outbox/inbox when
   durable messaging is available.
-
-Pending `CUST-PENDING-005`: approve one-to-one cardinality and link/unlink
-authority. This may remain pending while linkage is outside initial scope.
 
 ## 11. Phase 1 entry gate
 

@@ -13,6 +13,8 @@ public sealed class CustomerDbContext(DbContextOptions<CustomerDbContext> option
 
     public DbSet<CustomerAggregate> Customers => Set<CustomerAggregate>();
     public DbSet<CustomerChangeAudit> CustomerChangeAudits => Set<CustomerChangeAudit>();
+    public DbSet<CustomerCreateReference> CustomerCreateReferences => Set<CustomerCreateReference>();
+    public DbSet<CustomerAccountLinkage> CustomerAccountLinkages => Set<CustomerAccountLinkage>();
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {

@@ -10,9 +10,11 @@ public static class CustomerPermissions
     public const string Update = "CUSTOMERS_UPDATE";
     public const string StatusChange = "CUSTOMERS_STATUS_CHANGE";
     public const string AuditRead = "CUSTOMERS_AUDIT_READ";
+    public const string AccountLinkageRead = "CUSTOMERS_ACCOUNT_LINKAGE_READ";
+    public const string AccountLinkageManage = "CUSTOMERS_ACCOUNT_LINKAGE_MANAGE";
 
     public static IReadOnlyCollection<string> All { get; } =
-        [Create, Read, PiiRead, Update, StatusChange, AuditRead];
+        [Create, Read, PiiRead, Update, StatusChange, AuditRead, AccountLinkageRead, AccountLinkageManage];
 }
 
 public sealed class CustomerPermissionContribution : IPermissionContribution

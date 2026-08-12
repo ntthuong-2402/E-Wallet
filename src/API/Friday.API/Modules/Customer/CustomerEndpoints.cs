@@ -4,6 +4,7 @@ using Friday.Modules.Customer.Application.Features.Customers;
 using Friday.Modules.Customer.Application.Models;
 using Friday.Modules.Customer.Domain.Customers;
 using LinKit.Core.Cqrs;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Friday.API.Modules.Customer;
 
@@ -23,6 +24,7 @@ public static class CustomerEndpoints
         {
             CustomerDetailDto result = await mediator.SendAsync(
                 new CreateCustomerCommand(
+                    request.RefId,
                     request.FullName,
                     request.DateOfBirth,
                     request.DocumentType,
@@ -33,6 +35,15 @@ public static class CustomerEndpoints
             );
             return ApiResults.Ok(context, result, "Customer created.");
         }).RequireAuthorization(CustomerPermissions.Create).RequireRateLimiting("customer-write");
+
+        group.MapGet("/me", async (
+            IMediator mediator,
+            HttpContext context,
+            CancellationToken cancellationToken) =>
+            ApiResults.Ok(context, await mediator.QueryAsync(
+                new GetMyCustomerQuery(), cancellationToken
+            ))
+        ).RequireRateLimiting("customer-read");
 
         group.MapGet("/{id:int}", async (
             int id,
@@ -133,11 +144,54 @@ public static class CustomerEndpoints
             ))
         ).RequireAuthorization(CustomerPermissions.AuditRead).RequireRateLimiting("customer-read");
 
+        group.MapPost("/{id:int}/account-linkage", async (
+            int id,
+            LinkCustomerAccountRequest request,
+            IMediator mediator,
+            HttpContext context,
+            CancellationToken cancellationToken) =>
+            ApiResults.Ok(context, await mediator.SendAsync(
+                new LinkCustomerAccountCommand(
+                    id,
+                    request.ExpectedVersion,
+                    request.AccountId,
+                    request.Reason
+                ),
+                cancellationToken
+            ), "Customer account linked.")
+        ).RequireAuthorization(CustomerPermissions.AccountLinkageManage)
+            .RequireRateLimiting("customer-write");
+
+        group.MapGet("/{id:int}/account-linkage", async (
+            int id,
+            IMediator mediator,
+            HttpContext context,
+            CancellationToken cancellationToken) =>
+            ApiResults.Ok(context, await mediator.QueryAsync(
+                new GetCustomerAccountLinkageQuery(id), cancellationToken
+            ))
+        ).RequireAuthorization(CustomerPermissions.AccountLinkageRead)
+            .RequireRateLimiting("customer-read");
+
+        group.MapDelete("/{id:int}/account-linkage", async (
+            int id,
+            [FromBody] UnlinkCustomerAccountRequest request,
+            IMediator mediator,
+            HttpContext context,
+            CancellationToken cancellationToken) =>
+            ApiResults.Ok(context, await mediator.SendAsync(
+                new UnlinkCustomerAccountCommand(id, request.ExpectedVersion, request.Reason),
+                cancellationToken
+            ), "Customer account unlinked.")
+        ).RequireAuthorization(CustomerPermissions.AccountLinkageManage)
+            .RequireRateLimiting("customer-write");
+
         return endpoints;
     }
 }
 
 public sealed record CreateCustomerRequest(
+    string RefId,
     string FullName,
     DateOnly? DateOfBirth,
     CitizenDocumentType DocumentType,
@@ -155,3 +209,7 @@ public sealed record UpdateCustomerProfileRequest(
 );
 
 public sealed record ChangeCustomerStatusRequest(long ExpectedVersion, string TargetStatus, string Reason);
+
+public sealed record LinkCustomerAccountRequest(long ExpectedVersion, string AccountId, string Reason);
+
+public sealed record UnlinkCustomerAccountRequest(long ExpectedVersion, string Reason);

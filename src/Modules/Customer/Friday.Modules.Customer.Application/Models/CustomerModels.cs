@@ -76,3 +76,27 @@ public sealed record CustomerSearchPage(
     int Page,
     int PageSize
 );
+
+public sealed record CustomerAccountLinkageDto(
+    long LinkageId,
+    int CustomerId,
+    string AccountId,
+    long CustomerVersion,
+    DateTime LinkedOnUtc,
+    string LinkedByActorUserId,
+    string LinkReason
+)
+{
+    public static CustomerAccountLinkageDto FromLinkage(
+        CustomerAccountLinkage linkage,
+        long customerVersion
+    ) => new(
+        linkage.Id,
+        linkage.CustomerId,
+        linkage.AccountId,
+        customerVersion,
+        linkage.LinkedOnUtc,
+        linkage.LinkedByActorUserId,
+        linkage.LinkReason
+    );
+}

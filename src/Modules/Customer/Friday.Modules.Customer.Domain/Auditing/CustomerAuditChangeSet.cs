@@ -54,6 +54,14 @@ public sealed class CustomerAuditChangeSet
             [nameof(CustomerAggregate.Status)] = new { Before = from.ToString(), After = to.ToString() },
         });
 
+    public static CustomerAuditChangeSet AccountLinked(string accountId) => FromFields(
+        new Dictionary<string, object?> { ["AccountId"] = MaskExternalId(accountId) }
+    );
+
+    public static CustomerAuditChangeSet AccountUnlinked(string accountId) => FromFields(
+        new Dictionary<string, object?> { ["AccountId"] = MaskExternalId(accountId) }
+    );
+
     private static CustomerAuditChangeSet FromFields(IReadOnlyDictionary<string, object?> fields) =>
         new(JsonSerializer.Serialize(fields));
 
@@ -64,4 +72,12 @@ public sealed class CustomerAuditChangeSet
     }
 
     private static string? MaskDate(DateOnly? value) => value.HasValue ? "****-**-**" : null;
+
+    private static string MaskExternalId(string value)
+    {
+        string trimmed = value.Trim();
+        if (trimmed.Length <= 4) return new string('*', trimmed.Length);
+        int visible = Math.Min(4, trimmed.Length);
+        return new string('*', trimmed.Length - visible) + trimmed[^visible..];
+    }
 }

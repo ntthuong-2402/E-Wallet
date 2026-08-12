@@ -162,9 +162,10 @@ public sealed class CustomerPhaseTwoTests
     public void CustomerPermissionContribution_DeclaresAllCustomerPolicies()
     {
         CustomerPermissionContribution contribution = new();
-        Assert.Equal(6, contribution.Permissions.Count);
+        Assert.Equal(8, contribution.Permissions.Count);
         Assert.Contains(CustomerPermissions.Create, contribution.Permissions);
         Assert.Contains(CustomerPermissions.AuditRead, contribution.Permissions);
+        Assert.Contains(CustomerPermissions.AccountLinkageManage, contribution.Permissions);
     }
 
     [Fact]
@@ -292,6 +293,55 @@ public sealed class CustomerPhaseTwoTests
                 nameof(CustomerAggregate.CitizenDocumentNumber),
             ]));
         Assert.True(entity.FindProperty(nameof(CustomerAggregate.Version))!.IsConcurrencyToken);
+
+        Microsoft.EntityFrameworkCore.Metadata.IEntityType createReference =
+            dbContext.Model.FindEntityType(typeof(CustomerCreateReference))!;
+        Assert.Contains(createReference.GetIndexes(), index =>
+            index.IsUnique
+            && index.Properties.Select(property => property.Name)
+                .SequenceEqual([nameof(CustomerCreateReference.RefId)]));
+
+        Microsoft.EntityFrameworkCore.Metadata.IEntityType accountLinkage =
+            dbContext.Model.FindEntityType(typeof(CustomerAccountLinkage))!;
+        Assert.Contains(accountLinkage.GetIndexes(), index =>
+            index.IsUnique
+            && index.Properties.Select(property => property.Name)
+                .SequenceEqual([nameof(CustomerAccountLinkage.AccountId)]));
+    }
+
+    [Fact]
+    public void CustomerCreateReference_ValidatesRefId_contract()
+    {
+        Assert.Equal("partner:customer-001", CustomerCreateReference.NormalizeRefId(" partner:customer-001 "));
+        Assert.Throws<ArgumentException>(() => CustomerCreateReference.NormalizeRefId("bad ref id"));
+        Assert.Throws<ArgumentException>(() => CustomerCreateReference.NormalizeRefId(new string('a', 101)));
+    }
+
+    [Fact]
+    public void CustomerAccountLinkage_Requires_reason_and_preserves_history_on_unlink()
+    {
+        CustomerAggregate customer = CreateCustomer();
+        CustomerAccountLinkage linkage = CustomerAccountLinkage.Link(
+            customer,
+            "account-1234",
+            "operator-1",
+            "onboarding",
+            Now
+        );
+
+        linkage.Unlink("operator-2", "login account closed", Now.AddMinutes(1));
+
+        Assert.False(linkage.IsActive);
+        Assert.Equal("operator-2", linkage.UnlinkedByActorUserId);
+        Assert.Throws<InvalidOperationException>(() =>
+            linkage.Unlink("operator-3", "again", Now.AddMinutes(2)));
+        Assert.Throws<ArgumentException>(() => CustomerAccountLinkage.Link(
+            customer,
+            "account-2",
+            "operator-1",
+            " ",
+            Now
+        ));
     }
 
     private static CustomerAggregate CreateCustomer()

@@ -21,6 +21,17 @@ public sealed class CustomerReadStore(CustomerDbContext dbContext) : ICustomerRe
             .SingleOrDefaultAsync(cancellationToken);
     }
 
+    public Task<CustomerDetailDto?> GetByAccountIdAsync(
+        string accountId,
+        CancellationToken cancellationToken = default
+    ) => ProjectDetails(
+        from customer in dbContext.Customers.AsNoTracking()
+        join linkage in dbContext.CustomerAccountLinkages.AsNoTracking()
+            on customer.Id equals linkage.CustomerId
+        where linkage.AccountId == accountId && linkage.UnlinkedOnUtc == null
+        select customer
+    ).SingleOrDefaultAsync(cancellationToken);
+
     public async Task<CustomerSearchPage> SearchAsync(
         CustomerSearchCriteria criteria,
         CancellationToken cancellationToken = default

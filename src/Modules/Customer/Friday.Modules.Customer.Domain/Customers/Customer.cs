@@ -69,6 +69,13 @@ public sealed class Customer : AggregateRoot
 
     public void Close(string reason) => ChangeStatus(CustomerStatus.Closed, reason);
 
+    public void RegisterAccountLinkageChange(bool allowWhenClosed = false)
+    {
+        if (!allowWhenClosed) EnsureOpen();
+        Version++;
+        Touch();
+    }
+
     private void ChangeStatus(CustomerStatus target, string reason)
     {
         if (string.IsNullOrWhiteSpace(reason))

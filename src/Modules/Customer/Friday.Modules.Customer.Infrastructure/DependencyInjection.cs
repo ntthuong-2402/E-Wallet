@@ -60,6 +60,8 @@ public static class DependencyInjection
         services.AddScoped<ICustomerRepository, CustomerRepository>();
         services.AddScoped<ICustomerReadStore, CustomerReadStore>();
         services.AddScoped<ICustomerAuditRepository, CustomerAuditRepository>();
+        services.AddScoped<ICustomerCreateReferenceRepository, CustomerCreateReferenceRepository>();
+        services.AddScoped<ICustomerAccountLinkageRepository, CustomerAccountLinkageRepository>();
         services.AddSingleton<ICustomerCodeGenerator, SecureCustomerCodeGenerator>();
         services.AddSingleton<ICustomerAuditRetentionPolicy, CustomerAuditRetentionPolicy>();
         services.AddHostedService<CustomerAuditRetentionWorker>();

@@ -9,10 +9,14 @@ using Friday.Modules.Customer.Domain.Customers;
 using Friday.Modules.Customer.Domain.Repositories;
 using LinKit.Core.Cqrs;
 using CustomerAggregate = Friday.Modules.Customer.Domain.Customers.Customer;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 
 namespace Friday.Modules.Customer.Application.Features.Customers;
 
 public sealed record CreateCustomerCommand(
+    string RefId,
     string FullName,
     DateOnly? DateOfBirth,
     CitizenDocumentType DocumentType,
@@ -27,21 +31,42 @@ public sealed class CreateCustomerHandler(
     ICustomerAuditRetentionPolicy retention,
     ICustomerActor actor,
     ICustomerUnitOfWork unitOfWork,
-    TimeProvider timeProvider
+    TimeProvider timeProvider,
+    ICustomerCreateReferenceRepository references
 ) : ICommandHandler<CreateCustomerCommand, CustomerDetailDto>
 {
     private const int CodeGenerationAttempts = 5;
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public async Task<CustomerDetailDto> HandleAsync(
         CreateCustomerCommand request,
         CancellationToken cancellationToken
     )
     {
+        string refId = CustomerCreateReference.NormalizeRefId(request.RefId);
         CitizenDocument document = CitizenDocument.Create(
             request.DocumentType,
             request.IssuingCountryCode,
             request.CitizenDocumentNumber
         );
+        string requestHash = ComputeRequestHash(request, document);
+        await references.AcquireAsync(refId, cancellationToken);
+        CustomerCreateReference? existingReference = await references.GetAsync(refId, cancellationToken);
+        if (existingReference is not null)
+        {
+            if (!string.Equals(existingReference.ActorUserId, actor.UserId, StringComparison.Ordinal)
+                || !string.Equals(existingReference.RequestHash, requestHash, StringComparison.Ordinal))
+                throw new FridayException(
+                    CustomerErrorCodes.RefIdConflict,
+                    "RefId was already used with a different Customer request.",
+                    409
+                );
+            return JsonSerializer.Deserialize<CustomerDetailDto>(
+                existingReference.ResponseJson,
+                JsonOptions
+            ) ?? throw new InvalidOperationException("Stored Customer create response is invalid.");
+        }
+
         if (await customers.CitizenDocumentExistsAsync(
             document.DocumentType,
             document.IssuingCountryCode,
@@ -85,7 +110,32 @@ public sealed class CreateCustomerHandler(
         );
         await audits.AddAsync(audit, cancellationToken);
 
-        return CustomerDetailDto.FromCustomer(customer);
+        CustomerDetailDto response = CustomerDetailDto.FromCustomer(customer);
+        await references.AddAsync(CustomerCreateReference.Create(
+            refId,
+            requestHash,
+            actor.UserId,
+            customer,
+            JsonSerializer.Serialize(response, JsonOptions),
+            occurredOnUtc
+        ), cancellationToken);
+        return response;
+    }
+
+    private static string ComputeRequestHash(CreateCustomerCommand request, CitizenDocument document)
+    {
+        string normalizedName = string.Join(' ', (request.FullName ?? string.Empty).Split(
+            (char[]?)null,
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
+        ));
+        string canonical = string.Join('\n',
+            normalizedName,
+            request.DateOfBirth?.ToString("yyyy-MM-dd") ?? string.Empty,
+            ((int)document.DocumentType).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            document.IssuingCountryCode,
+            document.Number
+        );
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
     }
 
     private async Task<string> GenerateAvailableCodeAsync(CancellationToken cancellationToken)

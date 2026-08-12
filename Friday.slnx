@@ -32,4 +32,13 @@
     <Project Path="src/Modules/Customer/Friday.Modules.Customer.Domain/Friday.Modules.Customer.Domain.csproj" />
     <Project Path="src/Modules/Customer/Friday.Modules.Customer.Infrastructure/Friday.Modules.Customer.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/PaymentLedger/">
+    <Project Path="src/Modules/PaymentLedger/Friday.Modules.PaymentLedger.Application/Friday.Modules.PaymentLedger.Application.csproj" />
+    <Project Path="src/Modules/PaymentLedger/Friday.Modules.PaymentLedger.Domain/Friday.Modules.PaymentLedger.Domain.csproj" />
+    <Project Path="src/Modules/PaymentLedger/Friday.Modules.PaymentLedger.Infrastructure/Friday.Modules.PaymentLedger.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/PaymentLedger/">
+    <Project Path="tests/Friday.Modules.PaymentLedger.PostgreSqlTests/Friday.Modules.PaymentLedger.PostgreSqlTests.csproj" />
+    <Project Path="tests/Friday.Modules.PaymentLedger.UnitTests/Friday.Modules.PaymentLedger.UnitTests.csproj" />
+  </Folder>
 </Solution>

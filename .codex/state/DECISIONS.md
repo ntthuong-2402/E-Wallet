@@ -61,7 +61,14 @@ Status: Accepted
 - Customer change audit is append-only and commits atomically with successful
   Customer mutations; raw PII must not enter logs or audit payloads. Audit PII
   is masked and retention defaults to a configurable 365 days.
-- Initial Create Customer API idempotency is deferred.
+- Create Customer requires a globally unique, case-sensitive `refId`. Customer
+  persists its actor, normalized request hash, and original response snapshot;
+  the same actor/reference/payload replays the original result, while another
+  actor or different payload is rejected.
+- Account linkage means a Customer-to-Identity/Admin login-account external
+  reference, not a bank/payment account. One Customer and one account may each
+  have at most one active linkage. Link/unlink are dedicated authorized and
+  audited use cases with no cross-context database FK.
 - Customer `FullName` is required; `DateOfBirth` remains optional.
 - Phase 3 APIs expose a masked display name and masked CitizenId, and omit
   DateOfBirth. `CUSTOMERS_PII_READ` is reserved for a later dedicated and
@@ -71,3 +78,22 @@ Status: Accepted
 - Detailed rationale and pending policy decisions are recorded in
   `docs/adr/ADR-0001-customer-bounded-context-persistence.md` and
   `docs/customer/CUSTOMER_PHASE0_DESIGN.md`.
+
+## D-007 - PaymentLedger internal-transfer MVP
+
+Status: Accepted
+
+- PaymentLedger owns ledger accounts, immutable journals/entries, financial
+  transactions, and authoritative available balances in a dedicated
+  `PaymentLedgerDbContext` and `payment_ledger` PostgreSQL schema.
+- The MVP supports whole-unit VND internal transfers only. Ledger accounts open
+  active with zero balance; funding/provider flows are outside this slice.
+- Durable idempotency is unique by authenticated actor, operation, and
+  case-sensitive `refId`, with request hash and response snapshot committed
+  atomically with financial state.
+- Transfers lock both account rows in ascending account-ID order. Normal
+  accounts cannot overdraft.
+- Reversal is a separately authorized full compensating posting; it never
+  changes the original posted journal and only one reversal is allowed.
+- Detailed rationale is in
+  `docs/adr/ADR-0002-payment-ledger-internal-transfer.md`.

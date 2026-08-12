@@ -1,7 +1,7 @@
 # Friday Customer API Integration Guide
 
-Version: 1.0  
-Updated: 2026-08-11  
+Version: 1.1
+Updated: 2026-08-12
 Scope: current Customer endpoints implemented by `Friday.API`
 
 ## 1. Purpose
@@ -113,6 +113,8 @@ Bearer token
 | `CUSTOMERS_UPDATE` | Update Customer profile/document |
 | `CUSTOMERS_STATUS_CHANGE` | Suspend, reactivate, or close Customer |
 | `CUSTOMERS_AUDIT_READ` | Read Customer change audit |
+| `CUSTOMERS_ACCOUNT_LINKAGE_READ` | Read a Customer's active login-account linkage |
+| `CUSTOMERS_ACCOUNT_LINKAGE_MANAGE` | Link or unlink a Customer and login account |
 | `CUSTOMERS_PII_READ` | Reserved; no endpoint currently uses this permission |
 
 Possessing one permission does not imply any other permission.
@@ -225,6 +227,7 @@ Request:
 
 ```json
 {
+  "refId": "partner-a:create:20260812:000123",
   "fullName": "Nguyen Van An",
   "dateOfBirth": "1990-01-02",
   "documentType": 1,
@@ -260,6 +263,7 @@ Response: `200 OK`
 
 ```json
 {
+  "refId": "partner-a:create:20260812:000124",
   "fullName": "Jean Dupont",
   "dateOfBirth": null,
   "documentType": 2,
@@ -275,6 +279,7 @@ The stored normalized passport is `12AB3456`. The response contains only
 
 | Field | Required | Rules |
 |---|---|---|
+| `refId` | Yes | Globally unique, case-sensitive request reference; 1–100 ASCII letters/digits or `.`, `_`, `:`, `-` |
 | `fullName` | Yes | Non-blank, no control characters, maximum 200 characters; whitespace is normalized |
 | `dateOfBirth` | No | `YYYY-MM-DD` or `null` |
 | `documentType` | Yes | `1` for Vietnam Citizen ID or `2` for passport |
@@ -301,13 +306,16 @@ that behavior.
 | 403 | `ADMIN_PASSWORD_CHANGE_REQUIRED` | User must change password first |
 | 409 | `CUSTOMER_DOCUMENT_CONFLICT` | The normalized document identity already belongs to another Customer, including a concurrent-create race |
 | 409 | `CUSTOMER_CODE_CONFLICT` | Server could not allocate a unique Customer code; rare and safe to retry with a new request |
+| 409 | `CUSTOMER_REF_ID_CONFLICT` | The same `refId` was previously used with a different normalized create payload |
 | 429 | framework response | Write limit exceeded |
 | 500 | `INTERNAL_SERVER_ERROR` | Unexpected server failure; creation and audit are rolled back together |
 
-Create does not currently support an idempotency key. After an ambiguous
-network timeout, do not blindly repeat a create request. Reconcile through an
-agreed lookup/operational process first; the public read API cannot search by
-raw document number.
+`refId` is the create idempotency key and is stored durably in PostgreSQL. The
+same `refId`, the same authenticated account, and the same normalized payload return the original create
+response, including its original version and timestamps. Reusing the `refId`
+with a different payload returns `409 CUSTOMER_REF_ID_CONFLICT`. Concurrent
+requests with the same `refId` are serialized by the database. A caller must
+not reuse a `refId` for another business request.
 
 ## 7. Get Customer by ID
 
@@ -613,6 +621,8 @@ Current event types:
 | `CUSTOMER_CREATED` | Successful create |
 | `CUSTOMER_PROFILE_UPDATED` | Successful profile/document update |
 | `CUSTOMER_STATUS_CHANGED` | Successful status transition |
+| `CUSTOMER_ACCOUNT_LINKED` | Successful login-account linkage |
+| `CUSTOMER_ACCOUNT_UNLINKED` | Successful login-account unlink |
 
 Names, dates of birth, and document identities inside audit changes are masked.
 The audit response does not include the raw Citizen ID/passport number.
@@ -627,9 +637,124 @@ The audit response does not include the raw Citizen ID/passport number.
 | 429 | framework response | Read limit exceeded |
 | 500 | `INTERNAL_SERVER_ERROR` | Unexpected server failure |
 
-## 13. Error-code catalog
+## 13. Account linkage and self lookup
 
-### 13.1 Customer business codes
+In this contract, an account is a login account owned by Identity/Admin. It is
+not a bank/payment account. Customer stores only its external `accountId`; no
+cross-context database foreign key is created.
+
+The current cardinality is one-to-one while active:
+
+- one Customer can have at most one active account linkage;
+- one login account can belong to at most one active Customer;
+- unlink preserves linkage history and its audit event;
+- link and unlink increment the Customer `version`.
+
+### 13.1 Link an account
+
+```http
+POST /api/customers/101/account-linkage
+Authorization: Bearer <access-token>
+Content-Type: application/json
+```
+
+Required permission: `CUSTOMERS_ACCOUNT_LINKAGE_MANAGE`
+Rate-limit class: write
+
+```json
+{
+  "expectedVersion": 0,
+  "accountId": "42",
+  "reason": "Customer onboarding completed"
+}
+```
+
+The current Identity implementation uses numeric user IDs represented as a
+string in this external-reference contract. The account must exist. A
+successful operation creates `CUSTOMER_ACCOUNT_LINKED` audit and returns:
+
+```json
+{
+  "code": "SUCCESS",
+  "message": "Customer account linked.",
+  "data": {
+    "linkageId": 7001,
+    "customerId": 101,
+    "accountId": "42",
+    "customerVersion": 1,
+    "linkedOnUtc": "2026-08-12T03:20:00Z",
+    "linkedByActorUserId": "1",
+    "linkReason": "Customer onboarding completed"
+  },
+  "traceId": "4ac8d29ad9a74b81005b6b579cd5ee3f"
+}
+```
+
+### 13.2 Read active account linkage
+
+```http
+GET /api/customers/101/account-linkage
+Authorization: Bearer <access-token>
+```
+
+Required permission: `CUSTOMERS_ACCOUNT_LINKAGE_READ`
+Rate-limit class: read
+
+Response `data` uses the account-linkage DTO above.
+
+### 13.3 Unlink an account
+
+```http
+DELETE /api/customers/101/account-linkage
+Authorization: Bearer <access-token>
+Content-Type: application/json
+```
+
+Required permission: `CUSTOMERS_ACCOUNT_LINKAGE_MANAGE`
+Rate-limit class: write
+
+```json
+{
+  "expectedVersion": 1,
+  "reason": "Login account closed"
+}
+```
+
+Success returns `data: true` and creates a `CUSTOMER_ACCOUNT_UNLINKED` audit
+event. Unlink is permitted for a closed Customer so obsolete login access can
+still be removed.
+
+### 13.4 Resolve the authenticated Customer
+
+```http
+GET /api/customers/me
+Authorization: Bearer <access-token>
+```
+
+No Customer operator permission is required. Access is limited to the Customer
+linked to the JWT subject; the caller cannot supply another account ID. The
+response uses the masked Customer detail DTO.
+
+### 13.5 Account-linkage outcomes
+
+| HTTP | Code | Scenario |
+|---:|---|---|
+| 200 | `SUCCESS` | Link, read, unlink, or `/me` lookup succeeded |
+| 400 | `BAD_REQUEST` | Blank/oversized reason or blank/control-character account ID |
+| 401 | framework response or `ADMIN_SESSION_INVALID` | Authentication/session failure |
+| 403 | framework response or Admin user-state code | Missing linkage permission or user not eligible |
+| 404 | `CUSTOMER_NOT_FOUND` | Customer ID does not exist |
+| 404 | `CUSTOMER_ACCOUNT_NOT_FOUND` | External login account ID is malformed for the current Identity provider or does not exist |
+| 404 | `CUSTOMER_ACCOUNT_LINKAGE_NOT_FOUND` | Customer/account has no active linkage, including `/me` |
+| 409 | `CUSTOMER_ACCOUNT_ALREADY_LINKED` | Customer or account already has another active linkage |
+| 409 | `CUSTOMER_CONCURRENCY_CONFLICT` | Stale Customer `expectedVersion` |
+| 409 | `CONCURRENCY_CONFLICT` | Concurrent database writer won during commit |
+| 409 | `CUSTOMER_CLOSED` | Attempt to create a new linkage for a closed Customer |
+| 429 | framework response | Read/write rate limit exceeded |
+
+## 14. Error-code catalog
+
+### 14.1 Customer business codes
 
 | HTTP | Code | Meaning | Consumer action |
 |---:|---|---|---|
@@ -639,8 +764,12 @@ The audit response does not include the raw Citizen ID/passport number.
 | 409 | `CUSTOMER_INVALID_STATUS_TRANSITION` | Requested lifecycle transition is not allowed | Refresh Customer and follow the state machine |
 | 409 | `CUSTOMER_CONCURRENCY_CONFLICT` | Expected version is stale | Reload, reconcile, then retry intentionally |
 | 409 | `CUSTOMER_CLOSED` | Closed Customer cannot be updated | Stop; `Closed` is terminal |
+| 409 | `CUSTOMER_REF_ID_CONFLICT` | `refId` was reused with a different create payload | Generate a new reference only for a genuinely new request |
+| 404 | `CUSTOMER_ACCOUNT_NOT_FOUND` | Login account reference does not exist | Correct the account ID or complete account creation first |
+| 409 | `CUSTOMER_ACCOUNT_ALREADY_LINKED` | Customer or account already has an active linkage | Read and reconcile the existing linkage |
+| 404 | `CUSTOMER_ACCOUNT_LINKAGE_NOT_FOUND` | No active linkage exists | Stop or create an authorized linkage |
 
-### 13.2 Common application codes
+### 14.2 Common application codes
 
 | HTTP | Code | Meaning | Consumer action |
 |---:|---|---|---|
@@ -649,7 +778,7 @@ The audit response does not include the raw Citizen ID/passport number.
 | 409 | `CONCURRENCY_CONFLICT` | Database write race detected | Reload and reconcile |
 | 500 | `INTERNAL_SERVER_ERROR` | Unexpected server error | Record `traceId`; use bounded retry only where operation semantics are safe |
 
-### 13.3 Authentication/user-state codes visible on Customer calls
+### 14.3 Authentication/user-state codes visible on Customer calls
 
 | HTTP | Code | Meaning | Consumer action |
 |---:|---|---|---|
@@ -662,16 +791,17 @@ The audit response does not include the raw Citizen ID/passport number.
 authorization fails, but the current framework-generated `403` response does
 not guarantee that code in its response body.
 
-## 14. End-to-end integration scenarios
+## 15. End-to-end integration scenarios
 
 ### Scenario A: create and retain the server identity
 
 1. Authenticate through the Auth API and obtain an access token.
 2. Call `POST /api/customers` with `CUSTOMERS_CREATE`.
-3. Require HTTP `200` and `code == SUCCESS`.
-4. Persist the returned `id`, `customerCode`, and `version` in the integrating
+3. Supply a globally unique `refId` and retain it for retries.
+4. Require HTTP `200` and `code == SUCCESS`.
+5. Persist the returned `id`, `customerCode`, and `version` in the integrating
    system if required.
-5. Do not expect full name, date of birth, or raw document number in responses.
+6. Do not expect full name, date of birth, or raw document number in responses.
 
 ### Scenario B: handle a duplicate CCCD/passport
 
@@ -735,7 +865,17 @@ not guarantee that code in its response body.
 500 -> record traceId and retry only when operation semantics make it safe
 ```
 
-## 15. cURL examples
+### Scenario I: link login account and use `/me`
+
+1. Create or identify the Customer and read its latest `version`.
+2. Link an existing Identity/Admin account using the manage permission.
+3. The linked account calls `GET /api/customers/me` with its own token.
+4. The gateway resolves the Customer from the trusted JWT subject; the client
+   never supplies `customerId`.
+5. On unlink, use the latest Customer version and record a reason. `/me` then
+   returns `CUSTOMER_ACCOUNT_LINKAGE_NOT_FOUND`.
+
+## 16. cURL examples
 
 Set these placeholders in the calling environment:
 
@@ -752,6 +892,7 @@ curl -X POST "$BASE_URL/api/customers" \
   -H "Content-Type: application/json" \
   -H "X-Correlation-Id: partner-create-0001" \
   -d '{
+    "refId": "partner-a:create:20260812:000123",
     "fullName": "Nguyen Van An",
     "dateOfBirth": "1990-01-02",
     "documentType": 1,
@@ -805,7 +946,7 @@ curl "$BASE_URL/api/customers/101/audit?skip=0&take=20" \
   -H "Accept: application/json"
 ```
 
-## 16. Consumer implementation checklist
+## 17. Consumer implementation checklist
 
 - Use HTTPS and protect bearer tokens and request PII.
 - Check HTTP status before parsing the Friday response envelope.
@@ -817,21 +958,22 @@ curl "$BASE_URL/api/customers/101/audit?skip=0&take=20" \
   system timestamps during create.
 - Always use the latest returned `version` for mutation requests.
 - Handle both Customer-specific and common concurrency codes.
-- Never blind-retry create after an ambiguous timeout; idempotency is not yet
-  implemented.
+- Use a new `refId` for every new create intent and reuse exactly that `refId`
+  only when the same authenticated account retries the same normalized payload.
 - Never blind-retry a document conflict or invalid state transition.
 - Respect `429` with bounded exponential backoff and jitter.
 - Do not assume paginated results form a point-in-time snapshot.
 - Do not expect raw full name, date of birth, CCCD, or passport data from the
   current Customer read APIs.
 
-## 17. Current contract limitations
+## 18. Current contract limitations
 
 The following are explicit properties of the current implementation and may be
 addressed by a future versioned contract:
 
 - Create returns `200 OK`, not `201 Created`.
-- Create has no idempotency key.
+- `refId` uniqueness is currently global across Customer create requests rather
+  than scoped by partner/client.
 - Authentication challenge, permission denial, rate limiting, and some
   model-binding failures do not guarantee the Friday error envelope.
 - Enums are numeric in normal JSON DTOs, while status mutation uses a string.
